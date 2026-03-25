@@ -56,7 +56,7 @@ BLOCKED_TG_USER_ID = 1664076316
 BLOCKED_USER_TEXT = "ЛАВРЕНТ ИДИ НАХУЙ, СУКА!\n\nЗа 25₽ мне на карту ты помилован"
 DEFAULT_BAN_TEXT = "Доступ к боту ограничен администратором."
 EMOJI_KEY = "5330115548900501467"
-STARS_PER_RUB = 2.5
+STARS_PER_RUB = 1.3
 SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
 
 
@@ -670,9 +670,9 @@ def create_router(
         has_yookassa: bool,
     ) -> str:
         stars_amount = rub_to_stars(amount_rub)
-        stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = 2.5⭐)"
-        pay_step = "1) Нажмите «⭐️ Оплатить звездами»"
-        activate_step = "2) После оплаты прокси выдаются автоматически."
+        stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = {STARS_PER_RUB}⭐)"
+        pay_step = "1) Нажмите «⭐️ Оплатить звездами» или «Мнимо оплатил»"
+        activate_step = "2) После мнимого подтверждения прокси выдаются сразу."
         if has_yookassa:
             pay_step = "1) Нажмите «Оплатить через ЮKassa» или «⭐️ Оплатить звездами»"
             activate_step = "2) После оплаты нажмите «Активировать»."
@@ -2172,6 +2172,19 @@ def create_router(
 
         yookassa_payment_id = str(payment.get("yookassa_payment_id") or "").strip()
         if not yookassa_payment_id:
+            if not yk.enabled:
+                cancelled = await db.cancel_pending_payment(int(payment_id_raw), user_id)
+                if cancelled:
+                    await edit_or_send(
+                        callback,
+                        text="Заявка отменена.",
+                        reply_markup=main_menu_keyboard(),
+                        parse_mode="HTML",
+                    )
+                    await callback.answer("Отменено")
+                else:
+                    await callback.answer("Заявка уже обработана", show_alert=True)
+                return
             await callback.answer(
                 "Для платежа звездами отмена недоступна. Просто не оплачивайте счет.",
                 show_alert=True,
@@ -2255,11 +2268,15 @@ def create_router(
                 await callback.answer("Платеж пока не завершен", show_alert=True)
                 return
         else:
-            await callback.answer(
-                "Этот платеж не через ЮKassa. Оплатите звездами ⭐️ (кнопка выше), выдача пройдет автоматически.",
-                show_alert=True,
-            )
-            return
+            if not yk.enabled:
+                # Mock-режим: ЮKassa не настроена, считаем подтверждение кнопкой "Мнимо оплатил".
+                pass
+            else:
+                await callback.answer(
+                    "Этот платеж не через ЮKassa. Оплатите звездами ⭐️ (кнопка выше), выдача пройдет автоматически.",
+                    show_alert=True,
+                )
+                return
 
         months_count = max(1, int(payment.get("months_count") or 1))
         expires_at = int(
@@ -2356,5 +2373,6 @@ def create_router(
             parse_mode="HTML",
         )
         await callback.answer("Готово")
+        return
 
     return router

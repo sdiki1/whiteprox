@@ -272,7 +272,7 @@ def payment_keyboard(
     rows.append(
         [
             _button(
-                text="Активировать",
+                text="Активировать" if confirmation_url else "Мнимо оплатил",
                 callback_data=f"pay:{payment_id}",
                 style="success",
                 icon_custom_emoji_id=EMOJI_DONE,

@@ -272,7 +272,7 @@ def payment_keyboard(
     rows.append(
         [
             _button(
-                text="СБП" if confirmation_url else "СБП (минмо)",
+                text="СБП 🇷🇺" if confirmation_url else "СБП 🇷🇺",
                 callback_data=f"pay:{payment_id}",
                 style="success",
                 icon_custom_emoji_id=EMOJI_DONE,

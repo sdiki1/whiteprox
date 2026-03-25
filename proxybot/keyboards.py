@@ -57,21 +57,21 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 _button(
-                    text="Купить",
+                    text="Оформить доступ",
                     callback_data="menu:plans",
                     style="success",
                     icon_custom_emoji_id=EMOJI_SHIELD,
                 ),
+            ],
+            [
                 _button(
-                    text="Мои прокси",
+                    text="Мои конфиги",
                     callback_data="menu:links",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
                 ),
-            ],
-            [
                 _button(
-                    text="Статус прокси",
+                    text="Проверить статус",
                     callback_data="menu:status",
                     icon_custom_emoji_id=EMOJI_BOX,
                 )
@@ -110,19 +110,26 @@ def months_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def devices_keyboard(plans: list[Plan], *, months_count: int) -> InlineKeyboardMarkup:
+def devices_keyboard(
+    plans: list[Plan],
+    *,
+    months_count: int,
+    free_mode: bool = False,
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for plan in plans:
         total_amount = plan.price_rub * months_count
         button_style = "primary"
-        
         button_icon = EMOJI_BOX
+        total_label = f"{total_amount}₽ за {months_count} {_month_word(months_count)}"
+        if free_mode:
+            total_label = f"бесплатно • {months_count} {_month_word(months_count)}"
         rows.append(
             [
                 _button(
                     text=(
                         f"{plan.devices_count} прокси"
-                        f" • {total_amount}₽ за {months_count} {_month_word(months_count)}"
+                        f" • {total_label}"
                     ),
                     callback_data=f"buycfg:{months_count}:{plan.code}",
                     style=button_style,
@@ -150,8 +157,8 @@ def devices_keyboard(plans: list[Plan], *, months_count: int) -> InlineKeyboardM
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def plans_keyboard(plans: list[Plan]) -> InlineKeyboardMarkup:
-    return devices_keyboard(plans, months_count=1)
+def plans_keyboard(plans: list[Plan], *, free_mode: bool = False) -> InlineKeyboardMarkup:
+    return devices_keyboard(plans, months_count=1, free_mode=free_mode)
 
 
 def purchase_target_keyboard(*, months_count: int, plan_code: str) -> InlineKeyboardMarkup:
@@ -226,9 +233,25 @@ def friend_user_picker_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def payment_keyboard(payment_id: int, *, confirmation_url: str | None) -> InlineKeyboardMarkup:
+def payment_keyboard(
+    payment_id: int,
+    *,
+    confirmation_url: str | None,
+    free_mode: bool = False,
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    if confirmation_url:
+    if free_mode:
+        rows.append(
+            [
+                _button(
+                    text="Получить прокси бесплатно",
+                    callback_data=f"pay:{payment_id}",
+                    style="success",
+                    icon_custom_emoji_id=EMOJI_DONE,
+                )
+            ]
+        )
+    elif confirmation_url:
         rows.append(
             [
                 _button(
@@ -239,26 +262,27 @@ def payment_keyboard(payment_id: int, *, confirmation_url: str | None) -> Inline
                 )
             ]
         )
-    rows.append(
-        [
-            _button(
-                text="Оплатить звездами",
-                callback_data=f"paystars:{payment_id}",
-                style="primary",
-                icon_custom_emoji_id=EMOJI_STAR,
-            )
-        ]
-    )
-    rows.append(
-        [
-            _button(
-                text="Активировать",
-                callback_data=f"pay:{payment_id}",
-                style="success",
-                icon_custom_emoji_id=EMOJI_DONE,
-            )
-        ]
-    )
+    if not free_mode:
+        rows.append(
+            [
+                _button(
+                    text="Оплатить звездами",
+                    callback_data=f"paystars:{payment_id}",
+                    style="primary",
+                    icon_custom_emoji_id=EMOJI_STAR,
+                )
+            ]
+        )
+        rows.append(
+            [
+                _button(
+                    text="Активировать",
+                    callback_data=f"pay:{payment_id}",
+                    style="success",
+                    icon_custom_emoji_id=EMOJI_DONE,
+                )
+            ]
+        )
     rows.append(
         [
             _button(
@@ -323,22 +347,21 @@ def subscriptions_actions_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 _button(
-                    text="Купить",
+                    text="Оформить доступ",
                     callback_data="menu:plans",
                     style="success",
                     icon_custom_emoji_id=EMOJI_SHIELD,
                 ),
-                _button(
-                    text="Мои прокси",
-                    callback_data="menu:links",
-                    
-                    style="primary",
-                    icon_custom_emoji_id=EMOJI_DOCS,
-                ),
             ],
             [
                 _button(
-                    text="Статус прокси",
+                    text="Мои конфиги",
+                    callback_data="menu:links",
+                    style="primary",
+                    icon_custom_emoji_id=EMOJI_DOCS,
+                ),
+                _button(
+                    text="Проверить статус",
                     callback_data="menu:status",
                     icon_custom_emoji_id=EMOJI_BOX,
                 )

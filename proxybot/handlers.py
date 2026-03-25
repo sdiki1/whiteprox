@@ -670,7 +670,7 @@ def create_router(
         has_yookassa: bool,
     ) -> str:
         stars_amount = rub_to_stars(amount_rub)
-        stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = {STARS_PER_RUB}⭐)"
+        stars_line = f"Звезды: <b>{stars_amount}⭐</b>"
         return (
             f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Платеж создан</b>\n\n"
             f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"

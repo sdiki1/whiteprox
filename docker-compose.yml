@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-proxybot}
+      POSTGRES_USER: ${POSTGRES_USER:-proxybot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proxybot}
+    ports:
+      - "${POSTGRES_BIND_HOST:-0.0.0.0}:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proxybot} -d ${POSTGRES_DB:-proxybot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  socks-farm:
+    build:
+      context: .
+      dockerfile: infra/socks/Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      SOCKS_BIND_HOST: ${SOCKS_BIND_HOST:-0.0.0.0}
+      SOCKS_PORT_RANGE: ${SOCKS_PORT_RANGE:-30000-30199}
+      SOCKS_POOL_FILE: /data/proxy_pool.json
+    volumes:
+      - ./data:/data
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://proxybot:proxybot@postgres:5432/proxybot}
+      DATABASE_PATH: /data/bot.db
+      PROXY_POOL_FILE: /data/proxy_pool.json
+      PROXY_PUBLIC_HOST: ${SERVER_IP}
+      WEBHOOK_HOST: ${WEBHOOK_HOST:-0.0.0.0}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8080}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      TELEGRAM_WEBHOOK_SECRET_TOKEN: ${TELEGRAM_WEBHOOK_SECRET_TOKEN:-}
+    ports:
+      - "${WEBHOOK_BIND_HOST:-0.0.0.0}:${WEBHOOK_PORT:-8080}:${WEBHOOK_PORT:-8080}"
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socks-farm:
+        condition: service_started
+
+volumes:
+  postgres_data:

@@ -44,6 +44,7 @@ from .keyboards import (
     purchase_target_keyboard,
     subscriptions_actions_keyboard,
 )
+from .pricing import total_price_rub
 from .yookassa import YooKassaClient, YooKassaError
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ BLOCKED_USER_TEXT = "ЛАВРЕНТ ИДИ НАХУЙ, СУКА!\n\nЗа 25₽ �
 DEFAULT_BAN_TEXT = "Доступ к боту ограничен администратором."
 EMOJI_KEY = "5330115548900501467"
 STARS_PER_RUB = 2.5
+SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
 
 
 class AdminStates(StatesGroup):
@@ -101,12 +103,24 @@ def tg_emoji(emoji_id: str, fallback: str) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
 
 
+def build_instruction_text() -> str:
+    pay_line = "3) Оплатите заказ и активируйте выдачу."
+    return (
+        f"{tg_emoji(EMOJI_GEM, '💎')} <b>Инструкция</b>\n"
+        "1) Нажмите «Оформить доступ».\n"
+        "2) Выберите срок, пакет и получателя.\n"
+        f"{pay_line}\n"
+        "4) Откройте «Мои конфиги» и активируйте прокси."
+    )
+
+
 def build_welcome_text() -> str:
     return (
         f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>{BOT_BRAND}</b> - панель персональных SOCKS5 в Telegram.\n\n"
         f"{tg_emoji(EMOJI_KEY, '🔑')} Оформление и активация прокси прямо в чате.\n\n"
         "<blockquote>Можно оформить доступ для себя или подарить доступ другу "
-        "по tg_user_id/@username.</blockquote>"
+        "по tg_user_id/@username.</blockquote>\n\n"
+        f"{build_instruction_text()}"
     )
 
 
@@ -118,7 +132,8 @@ def build_help_text() -> str:
         "/buy — оформление доступа\n"
         "/my_links — мои прокси\n"
         "/status — сроки и статусы\n"
-        "/help — помощь"
+        "/help — помощь\n\n"
+        f"{build_instruction_text()}"
     )
 
 
@@ -152,6 +167,10 @@ def month_word(count: int) -> str:
 
 def rub_to_stars(amount_rub: int) -> int:
     return int(math.ceil(max(0, amount_rub) * STARS_PER_RUB))
+
+
+def is_supported_months(months_count: int) -> bool:
+    return months_count in SUPPORTED_MONTH_OPTIONS
 
 
 def build_buy_months_text() -> str:
@@ -461,7 +480,7 @@ async def send_links_list(
     if not links:
         text = (
             f"{tg_emoji(EMOJI_DEV, '📱')} У вас пока нет активных прокси.\n"
-            "Выберите тариф через /buy или кнопку «Купить»."
+            "Выберите тариф через /buy или кнопку «Оформить доступ»."
         )
         if source_message is not None:
             await source_message.edit_text(text, reply_markup=back_to_menu_keyboard())
@@ -636,15 +655,8 @@ def create_router(
     router = Router()
     admin_ids = set(admin_tg_ids)
     yk = yookassa_client or YooKassaClient(shop_id="", secret_key="", return_url="https://t.me")
-    free_checkout_mode = not yk.enabled
 
     async def build_checkout_context_text() -> str:
-        if free_checkout_mode:
-            return (
-                f"{build_buy_months_text()}\n\n"
-                "<blockquote>Тестовый режим: ЮKassa не настроена, "
-                "поэтому прокси выдаются бесплатно.</blockquote>"
-            )
         return build_buy_months_text()
 
     async def build_payment_message(
@@ -656,20 +668,14 @@ def create_router(
         buyer_tg_user_id: int,
         target_tg_user_id: int,
         has_yookassa: bool,
-        free_mode: bool,
     ) -> str:
-        if free_mode:
-            pay_step = "1) Нажмите «Получить прокси бесплатно»"
-            activate_step = "2) Бот сразу выдаст рабочие прокси."
-            stars_line = "Оплата через ЮKassa/Stars отключена до настройки ключей."
-        else:
-            stars_amount = rub_to_stars(amount_rub)
-            stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = 2.5⭐)"
-            pay_step = "1) Нажмите «⭐️ Оплатить звездами»"
-            activate_step = "2) После оплаты прокси выдаются автоматически."
-            if has_yookassa:
-                pay_step = "1) Нажмите «Оплатить через ЮKassa» или «⭐️ Оплатить звездами»"
-                activate_step = "2) После оплаты нажмите «Активировать»."
+        stars_amount = rub_to_stars(amount_rub)
+        stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = 2.5⭐)"
+        pay_step = "1) Нажмите «⭐️ Оплатить звездами»"
+        activate_step = "2) После оплаты прокси выдаются автоматически."
+        if has_yookassa:
+            pay_step = "1) Нажмите «Оплатить через ЮKassa» или «⭐️ Оплатить звездами»"
+            activate_step = "2) После оплаты нажмите «Активировать»."
         return (
             f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Платеж создан</b>\n\n"
             f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
@@ -704,9 +710,10 @@ def create_router(
         plan: Plan,
         months_count: int,
     ) -> tuple[int, str | None]:
-        amount_rub = plan.price_rub * max(1, months_count)
-        if free_checkout_mode:
-            amount_rub = 0
+        amount_rub = total_price_rub(
+            monthly_price_rub=plan.price_rub,
+            months_count=months_count,
+        )
         yookassa_payment_id: str | None = None
         yookassa_confirmation_url: str | None = None
         if yk.enabled:
@@ -757,7 +764,10 @@ def create_router(
             bot=message.bot,
             admin_tg_ids=admin_ids,
         )
-        await message.answer(build_welcome_text(), reply_markup=main_menu_keyboard())
+        await message.answer(
+            build_welcome_text(),
+            reply_markup=main_menu_keyboard(),
+        )
 
     @router.message(Command("help"))
     async def cmd_help(message: Message, state: FSMContext) -> None:
@@ -1438,6 +1448,24 @@ def create_router(
         )
         await callback.answer()
 
+    @router.callback_query(F.data == "menu:guide")
+    async def cb_guide(callback: CallbackQuery) -> None:
+        if await handle_blocked_callback(db, callback):
+            return
+        await ensure_user(
+            db,
+            callback.from_user,
+            bot=callback.bot,
+            admin_tg_ids=admin_ids,
+        )
+        await edit_or_send(
+            callback,
+            text=build_instruction_text(),
+            reply_markup=back_to_menu_keyboard(),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+
     @router.callback_query(F.data == "menu:plans")
     async def cb_plans(callback: CallbackQuery, state: FSMContext) -> None:
         if await handle_blocked_callback(db, callback):
@@ -1557,7 +1585,7 @@ def create_router(
             await callback.answer("Неверный формат выбора", show_alert=True)
             return
         months_count = parse_int(parts[1])
-        if months_count is None or months_count < 1 or months_count > 24:
+        if months_count is None or not is_supported_months(months_count):
             await callback.answer("Некорректный срок", show_alert=True)
             return
 
@@ -1581,7 +1609,6 @@ def create_router(
             reply_markup=devices_keyboard(
                 plans,
                 months_count=months_count,
-                free_mode=free_checkout_mode,
             ),
             parse_mode="HTML",
         )
@@ -1597,7 +1624,7 @@ def create_router(
             return
         months_count = parse_int(parts[1])
         plan_code = parts[2]
-        if months_count is None or months_count < 1 or months_count > 24:
+        if months_count is None or not is_supported_months(months_count):
             await callback.answer("Некорректный срок", show_alert=True)
             return
 
@@ -1618,7 +1645,7 @@ def create_router(
                 f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Этап 3/3</b>\n\n"
                 f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
                 f"Прокси в пакете: <b>{plan.devices_count}</b>\n"
-                f"Сумма: <b>{0 if free_checkout_mode else plan.price_rub * months_count}₽</b>\n\n"
+                f"Сумма: <b>{total_price_rub(monthly_price_rub=plan.price_rub, months_count=months_count)}₽</b>\n\n"
                 "Выберите, на кого оформить доступ."
             ),
             reply_markup=purchase_target_keyboard(months_count=months_count, plan_code=plan.code),
@@ -1638,7 +1665,7 @@ def create_router(
         action = parts[1]
         months_count = parse_int(parts[2])
         plan_code = parts[3]
-        if months_count is None or months_count < 1 or months_count > 24:
+        if months_count is None or not is_supported_months(months_count):
             await callback.answer("Некорректный срок", show_alert=True)
             return
 
@@ -1674,7 +1701,6 @@ def create_router(
                 reply_markup=devices_keyboard(
                     plans,
                     months_count=months_count,
-                    free_mode=free_checkout_mode,
                 ),
                 parse_mode="HTML",
             )
@@ -1709,7 +1735,10 @@ def create_router(
             await callback.answer("Неизвестный вариант", show_alert=True)
             return
 
-        amount_rub = plan.price_rub * months_count
+        amount_rub = total_price_rub(
+            monthly_price_rub=plan.price_rub,
+            months_count=months_count,
+        )
         try:
             payment_id, confirmation_url = await create_checkout_payment(
                 buyer_user_id=buyer_user_id,
@@ -1728,9 +1757,6 @@ def create_router(
             )
             await callback.answer("Ошибка оплаты", show_alert=True)
             return
-        if free_checkout_mode:
-            amount_rub = 0
-
         await edit_or_send(
             callback,
             text=await build_payment_message(
@@ -1741,12 +1767,10 @@ def create_router(
                 buyer_tg_user_id=callback.from_user.id,
                 target_tg_user_id=callback.from_user.id,
                 has_yookassa=bool(confirmation_url),
-                free_mode=free_checkout_mode,
             ),
             reply_markup=payment_keyboard(
                 payment_id,
                 confirmation_url=confirmation_url,
-                free_mode=free_checkout_mode,
             ),
             parse_mode="HTML",
         )
@@ -1783,7 +1807,10 @@ def create_router(
             if payload.strip().lower() in {"отмена", "отмена выбора", "cancel"}:
                 await state.clear()
                 await message.answer("Выбор пользователя отменен.", reply_markup=ReplyKeyboardRemove())
-                await message.answer(build_welcome_text(), reply_markup=main_menu_keyboard())
+                await message.answer(
+                    build_welcome_text(),
+                    reply_markup=main_menu_keyboard(),
+                )
                 return
 
             parsed_id = parse_int(payload)
@@ -1809,7 +1836,7 @@ def create_router(
         data = await state.get_data()
         months_count = parse_int(str(data.get("months_count", "")))
         plan_code = str(data.get("plan_code") or "").strip()
-        if months_count is None or months_count < 1 or not plan_code:
+        if months_count is None or not is_supported_months(months_count) or not plan_code:
             await state.clear()
             await message.answer(
                 "Сессия покупки устарела. Начните заново через /buy.",
@@ -1838,7 +1865,10 @@ def create_router(
 
         recipient_profile = await ensure_recipient_profile(target_tg_user_id)
 
-        amount_rub = plan.price_rub * months_count
+        amount_rub = total_price_rub(
+            monthly_price_rub=plan.price_rub,
+            months_count=months_count,
+        )
         try:
             payment_id, confirmation_url = await create_checkout_payment(
                 buyer_user_id=buyer_user_id,
@@ -1853,10 +1883,11 @@ def create_router(
                 f"Не удалось создать платеж в ЮKassa.\n{exc}",
                 reply_markup=ReplyKeyboardRemove(),
             )
-            await message.answer(build_welcome_text(), reply_markup=main_menu_keyboard())
+            await message.answer(
+                build_welcome_text(),
+                reply_markup=main_menu_keyboard(),
+            )
             return
-        if free_checkout_mode:
-            amount_rub = 0
 
         await state.clear()
         await message.answer("Пользователь выбран.", reply_markup=ReplyKeyboardRemove())
@@ -1869,12 +1900,10 @@ def create_router(
                 buyer_tg_user_id=message.from_user.id,
                 target_tg_user_id=target_tg_user_id,
                 has_yookassa=bool(confirmation_url),
-                free_mode=free_checkout_mode,
             ),
             reply_markup=payment_keyboard(
                 payment_id,
                 confirmation_url=confirmation_url,
-                free_mode=free_checkout_mode,
             ),
             parse_mode="HTML",
         )
@@ -2143,19 +2172,6 @@ def create_router(
 
         yookassa_payment_id = str(payment.get("yookassa_payment_id") or "").strip()
         if not yookassa_payment_id:
-            if free_checkout_mode:
-                cancelled = await db.cancel_pending_payment(int(payment_id_raw), user_id)
-                if cancelled:
-                    await edit_or_send(
-                        callback,
-                        text="Заявка отменена.",
-                        reply_markup=main_menu_keyboard(),
-                        parse_mode="HTML",
-                    )
-                    await callback.answer("Отменено")
-                else:
-                    await callback.answer("Заявка уже обработана", show_alert=True)
-                return
             await callback.answer(
                 "Для платежа звездами отмена недоступна. Просто не оплачивайте счет.",
                 show_alert=True,
@@ -2232,14 +2248,13 @@ def create_router(
                             reply_markup=payment_keyboard(
                                 payment_id,
                                 confirmation_url=confirmation_url,
-                                free_mode=free_checkout_mode,
                             )
                         )
                     except TelegramBadRequest:
                         pass
                 await callback.answer("Платеж пока не завершен", show_alert=True)
                 return
-        elif not free_checkout_mode:
+        else:
             await callback.answer(
                 "Этот платеж не через ЮKassa. Оплатите звездами ⭐️ (кнопка выше), выдача пройдет автоматически.",
                 show_alert=True,

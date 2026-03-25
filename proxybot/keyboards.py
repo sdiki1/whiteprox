@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 
 from .database import Plan
+from .pricing import total_price_rub
 
 
 EMOJI_SHIELD = "5407025283456835913"
@@ -76,6 +77,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                     icon_custom_emoji_id=EMOJI_BOX,
                 )
             ],
+            [
+                _button(
+                    text="Инструкция",
+                    callback_data="menu:guide",
+                    style="primary",
+                    icon_custom_emoji_id=EMOJI_DOCS,
+                )
+            ]
         ]
     )
 
@@ -114,16 +123,16 @@ def devices_keyboard(
     plans: list[Plan],
     *,
     months_count: int,
-    free_mode: bool = False,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for plan in plans:
-        total_amount = plan.price_rub * months_count
+        total_amount = total_price_rub(
+            monthly_price_rub=plan.price_rub,
+            months_count=months_count,
+        )
         button_style = "primary"
         button_icon = EMOJI_BOX
         total_label = f"{total_amount}₽ за {months_count} {_month_word(months_count)}"
-        if free_mode:
-            total_label = f"бесплатно • {months_count} {_month_word(months_count)}"
         rows.append(
             [
                 _button(
@@ -157,8 +166,8 @@ def devices_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def plans_keyboard(plans: list[Plan], *, free_mode: bool = False) -> InlineKeyboardMarkup:
-    return devices_keyboard(plans, months_count=1, free_mode=free_mode)
+def plans_keyboard(plans: list[Plan]) -> InlineKeyboardMarkup:
+    return devices_keyboard(plans, months_count=1)
 
 
 def purchase_target_keyboard(*, months_count: int, plan_code: str) -> InlineKeyboardMarkup:
@@ -237,21 +246,9 @@ def payment_keyboard(
     payment_id: int,
     *,
     confirmation_url: str | None,
-    free_mode: bool = False,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    if free_mode:
-        rows.append(
-            [
-                _button(
-                    text="Получить прокси бесплатно",
-                    callback_data=f"pay:{payment_id}",
-                    style="success",
-                    icon_custom_emoji_id=EMOJI_DONE,
-                )
-            ]
-        )
-    elif confirmation_url:
+    if confirmation_url:
         rows.append(
             [
                 _button(
@@ -262,27 +259,26 @@ def payment_keyboard(
                 )
             ]
         )
-    if not free_mode:
-        rows.append(
-            [
-                _button(
-                    text="Оплатить звездами",
-                    callback_data=f"paystars:{payment_id}",
-                    style="primary",
-                    icon_custom_emoji_id=EMOJI_STAR,
-                )
-            ]
-        )
-        rows.append(
-            [
-                _button(
-                    text="Активировать",
-                    callback_data=f"pay:{payment_id}",
-                    style="success",
-                    icon_custom_emoji_id=EMOJI_DONE,
-                )
-            ]
-        )
+    rows.append(
+        [
+            _button(
+                text="Оплатить звездами",
+                callback_data=f"paystars:{payment_id}",
+                style="primary",
+                icon_custom_emoji_id=EMOJI_STAR,
+            )
+        ]
+    )
+    rows.append(
+        [
+            _button(
+                text="Активировать",
+                callback_data=f"pay:{payment_id}",
+                style="success",
+                icon_custom_emoji_id=EMOJI_DONE,
+            )
+        ]
+    )
     rows.append(
         [
             _button(
@@ -364,6 +360,14 @@ def subscriptions_actions_keyboard() -> InlineKeyboardMarkup:
                     text="Проверить статус",
                     callback_data="menu:status",
                     icon_custom_emoji_id=EMOJI_BOX,
+                )
+            ],
+            [
+                _button(
+                    text="Инструкция",
+                    callback_data="menu:guide",
+                    style="primary",
+                    icon_custom_emoji_id=EMOJI_DOCS,
                 )
             ],
             [

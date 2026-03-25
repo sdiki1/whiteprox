@@ -5,10 +5,12 @@ Telegram-бот для продажи персональных SOCKS5-прокс
 ## Что уже сделано
 
 - Тарифы:
-  - `1 прокси` — `99₽ / мес`
+  - `1 месяц` — `99₽`
+  - `3 месяца` — `249₽`
+  - `6 месяцев` — `499₽`
+  - `12 месяцев` — `999₽`
 - Оплата через `ЮKassa`: сначала кнопка оплаты, потом кнопка активации.
 - Добавлена оплата `Telegram Stars` (курс в боте: `1₽ = 2.5⭐`, округление вверх до целой звезды).
-- Если `YOOKASSA_SHOP_ID`/`YOOKASSA_SECRET_KEY` не заданы, бот включает бесплатную выдачу прокси (тестовый режим).
 - Новый flow покупки: выбор `месяцев` -> выбор `тарифа` -> `себе или другу`.
 - Для покупки другу можно выбрать пользователя кнопкой Telegram (`request_user`), либо указать `tg_user_id`/`@username`/контакт.
 - После активации бот выдаёт SOCKS5 в формате Telegram:
@@ -68,7 +70,6 @@ docker compose up -d --build
 - `YOOKASSA_SHOP_ID` — ID магазина ЮKassa
 - `YOOKASSA_SECRET_KEY` — секретный ключ ЮKassa
 - `YOOKASSA_RETURN_URL` — URL возврата после оплаты (redirect)
-- Если `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET_KEY` пустые, включается бесплатная выдача без оплаты.
 - `WEBHOOK_HOST` — bind host HTTP-сервера вебхуков
 - `WEBHOOK_PORT` — bind port HTTP-сервера вебхуков
 - `WEBHOOK_BIND_HOST` — host bind для публикации webhook-порта в `docker-compose`

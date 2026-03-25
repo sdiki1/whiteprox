@@ -671,11 +671,6 @@ def create_router(
     ) -> str:
         stars_amount = rub_to_stars(amount_rub)
         stars_line = f"Звезды: <b>{stars_amount}⭐</b> (1₽ = {STARS_PER_RUB}⭐)"
-        pay_step = "1) Нажмите «⭐️ Оплатить звездами» или «Мнимо оплатил»"
-        activate_step = "2) После мнимого подтверждения прокси выдаются сразу."
-        if has_yookassa:
-            pay_step = "1) Нажмите «Оплатить через ЮKassa» или «⭐️ Оплатить звездами»"
-            activate_step = "2) После оплаты нажмите «Активировать»."
         return (
             f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Платеж создан</b>\n\n"
             f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
@@ -684,8 +679,6 @@ def create_router(
             f"Сумма: <b>{amount_rub}₽</b>\n"
             f"{stars_line}\n"
             f"ID: <code>{payment_id}</code>\n\n"
-            f"{pay_step}\n"
-            f"{activate_step}"
         )
 
     async def ensure_recipient_profile(tg_user_id: int) -> UserProfile:

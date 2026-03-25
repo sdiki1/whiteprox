@@ -262,7 +262,7 @@ def payment_keyboard(
     rows.append(
         [
             _button(
-                text="Оплатить звездами",
+                text="TG STARS ⭐️",
                 callback_data=f"paystars:{payment_id}",
                 style="primary",
                 icon_custom_emoji_id=EMOJI_STAR,
@@ -272,7 +272,7 @@ def payment_keyboard(
     rows.append(
         [
             _button(
-                text="Активировать" if confirmation_url else "Мнимо оплатил",
+                text="СБП" if confirmation_url else "СБП (минмо)",
                 callback_data=f"pay:{payment_id}",
                 style="success",
                 icon_custom_emoji_id=EMOJI_DONE,

@@ -73,6 +73,7 @@ class Database:
                 referral_balance_rub INTEGER NOT NULL DEFAULT 0,
                 referral_total_earned_rub INTEGER NOT NULL DEFAULT 0,
                 referral_total_debited_rub INTEGER NOT NULL DEFAULT 0,
+                purchase_nudge_sent_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -274,6 +275,10 @@ class Database:
         if "referral_total_debited_rub" not in existing:
             await self.conn.execute(
                 "ALTER TABLE users ADD COLUMN referral_total_debited_rub INTEGER NOT NULL DEFAULT 0"
+            )
+        if "purchase_nudge_sent_at" not in existing:
+            await self.conn.execute(
+                "ALTER TABLE users ADD COLUMN purchase_nudge_sent_at INTEGER"
             )
 
         await self.conn.execute(
@@ -1367,9 +1372,55 @@ class Database:
             await self.conn.rollback()
             raise
 
-    async def get_expiring_in_two_days_and_mark_notified_users(self) -> list[int]:
+    async def get_purchase_nudge_candidates_and_mark_notified_users(
+        self,
+        *,
+        delay_seconds: int = 15 * 60,
+    ) -> list[int]:
         timestamp = now_ts()
-        threshold = timestamp + 2 * 24 * 60 * 60
+        cutoff = timestamp - max(60, delay_seconds)
+        cursor = await self.conn.execute(
+            """
+            SELECT u.id AS user_id, u.tg_user_id
+            FROM users u
+            WHERE (u.purchase_nudge_sent_at IS NULL)
+              AND u.updated_at <= ?
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM payments p
+                    WHERE p.user_id = u.id AND p.status = 'paid'
+              )
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM subscriptions s
+                    WHERE s.user_id = u.id
+                      AND s.status = 'active'
+                      AND s.expires_at > ?
+              )
+            """,
+            (cutoff, timestamp),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        if not rows:
+            return []
+
+        user_ids = [int(row["user_id"]) for row in rows]
+        placeholders = ",".join("?" for _ in user_ids)
+        await self.conn.execute(
+            f"""
+            UPDATE users
+            SET purchase_nudge_sent_at = ?, updated_at = ?
+            WHERE id IN ({placeholders}) AND purchase_nudge_sent_at IS NULL
+            """,
+            (timestamp, timestamp, *user_ids),
+        )
+        await self.conn.commit()
+        return list(dict.fromkeys(int(row["tg_user_id"]) for row in rows))
+
+    async def get_expiring_in_three_days_and_mark_notified_users(self) -> list[int]:
+        timestamp = now_ts()
+        threshold = timestamp + 3 * 24 * 60 * 60
         cursor = await self.conn.execute(
             """
             SELECT s.id AS subscription_id, u.tg_user_id
@@ -1399,6 +1450,9 @@ class Database:
         )
         await self.conn.commit()
         return list(dict.fromkeys(int(row["tg_user_id"]) for row in rows))
+
+    async def get_expiring_in_two_days_and_mark_notified_users(self) -> list[int]:
+        return await self.get_expiring_in_three_days_and_mark_notified_users()
 
     async def expire_due_and_get_notified_users(self) -> list[int]:
         timestamp = now_ts()

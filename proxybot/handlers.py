@@ -113,7 +113,7 @@ def build_instruction_text() -> str:
         "1) Нажмите «Оформить доступ».\n"
         "2) Выберите срок, пакет и получателя.\n"
         f"{pay_line}\n"
-        "4) Откройте «Мои конфиги» и активируйте прокси."
+        "4) Откройте «Мои прокси» и активируйте прокси."
     )
 
 
@@ -131,7 +131,6 @@ def build_help_text() -> str:
     return (
         f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Команды бота</b>\n\n"
         "/start — главное меню\n"
-        "/plans — оформление доступа\n"
         "/buy — оформление доступа\n"
         "/my_links — мои прокси\n"
         "/status — сроки и статусы\n"
@@ -866,7 +865,6 @@ def create_router(
             )
         await message.answer(build_help_text())
 
-    @router.message(Command("plans"))
     @router.message(Command("buy"))
     async def cmd_plans(message: Message, state: FSMContext) -> None:
         if await handle_blocked_message(db, message):

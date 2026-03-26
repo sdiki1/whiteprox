@@ -66,7 +66,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Мои конфиги",
+                    text="Мои прокси",
                     callback_data="menu:links",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
@@ -356,7 +356,7 @@ def subscriptions_actions_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Мои конфиги",
+                    text="Мои прокси",
                     callback_data="menu:links",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,

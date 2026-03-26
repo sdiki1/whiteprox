@@ -15,18 +15,32 @@ logger = logging.getLogger(__name__)
 async def expiration_worker(bot: Bot, db: Database, check_interval: int) -> None:
     while True:
         try:
-            expiring_user_ids = await db.get_expiring_in_two_days_and_mark_notified_users()
+            purchase_nudge_user_ids = await db.get_purchase_nudge_candidates_and_mark_notified_users()
+            for tg_user_id in purchase_nudge_user_ids:
+                try:
+                    await bot.send_message(
+                        tg_user_id,
+                        (
+                            "Вы были в боте, но покупка не завершена.\n"
+                            "Оформите доступ сейчас, чтобы не остаться без прокси.\n"
+                            "Команда: /buy"
+                        ),
+                    )
+                except (TelegramBadRequest, TelegramForbiddenError):
+                    logger.warning("Could not send 15-minute purchase nudge to user %s", tg_user_id)
+
+            expiring_user_ids = await db.get_expiring_in_three_days_and_mark_notified_users()
             for tg_user_id in expiring_user_ids:
                 try:
                     await bot.send_message(
                         tg_user_id,
                         (
-                            "🛡️ Ваш прокси заканчивается через два дня! "
+                            "🛡️ Ваш прокси заканчивается через 3 дня! "
                             "Пожалуйста, не забудьте продлить его."
                         ),
                     )
                 except (TelegramBadRequest, TelegramForbiddenError):
-                    logger.warning("Could not send 2-day reminder to user %s", tg_user_id)
+                    logger.warning("Could not send 3-day reminder to user %s", tg_user_id)
 
             expired_user_ids = await db.expire_due_and_get_notified_users()
             for tg_user_id in expired_user_ids:

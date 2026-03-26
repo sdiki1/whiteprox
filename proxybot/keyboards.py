@@ -79,10 +79,15 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Инструкция",
-                    callback_data="menu:guide",
+                    text="Рефералы",
+                    callback_data="menu:ref",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
+                ),
+                _button(
+                    text="Инструкция",
+                    callback_data="menu:guide",
+                    icon_custom_emoji_id=EMOJI_BOX,
                 )
             ]
         ]
@@ -364,10 +369,15 @@ def subscriptions_actions_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Инструкция",
-                    callback_data="menu:guide",
+                    text="Рефералы",
+                    callback_data="menu:ref",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
+                ),
+                _button(
+                    text="Инструкция",
+                    callback_data="menu:guide",
+                    icon_custom_emoji_id=EMOJI_BOX,
                 )
             ],
             [
@@ -415,6 +425,9 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             [
                 _button(text="7) Начислить прокси", callback_data="admin:grant_proxies", style="success"),
                 _button(text="8) Удалить прокси", callback_data="admin:remove_proxies", style="danger"),
+            ],
+            [
+                _button(text="9) Списать реф.", callback_data="admin:ref_debit", style="danger"),
             ],
             [
                 _button(text="Закрыть", callback_data="admin:close"),

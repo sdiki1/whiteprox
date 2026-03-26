@@ -58,6 +58,7 @@ DEFAULT_BAN_TEXT = "Доступ к боту ограничен админист
 EMOJI_KEY = "5330115548900501467"
 STARS_PER_RUB = 1.3
 SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
+REFERRAL_REWARD_PERCENT = 50
 
 
 class AdminStates(StatesGroup):
@@ -68,6 +69,7 @@ class AdminStates(StatesGroup):
     user_configs = State()
     grant_proxies = State()
     remove_proxies = State()
+    referral_debit = State()
 
 
 class PurchaseStates(StatesGroup):
@@ -132,6 +134,7 @@ def build_help_text() -> str:
         "/buy — оформление доступа\n"
         "/my_links — мои прокси\n"
         "/status — сроки и статусы\n"
+        "/ref — реферальная программа\n"
         "/help — помощь\n\n"
         f"{build_instruction_text()}"
     )
@@ -188,10 +191,36 @@ def build_devices_step_text(*, months_count: int) -> str:
     )
 
 
-def build_admin_panel_text() -> str:
-    return (
+def build_admin_panel_text(*, referral_summary: dict[str, int] | None = None) -> str:
+    base = (
         f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Админ-панель</b>\n\n"
         "Выберите действие из меню ниже."
+    )
+    if referral_summary is None:
+        return base
+    return (
+        f"{base}\n\n"
+        f"{tg_emoji(EMOJI_GEM, '💎')} <b>Рефералы</b>\n"
+        f"Пользователей с реферером: <b>{referral_summary.get('users_with_referrer', 0)}</b>\n"
+        f"Начислено всего: <b>{referral_summary.get('total_earned_rub', 0)}₽</b>\n"
+        f"Списано/выведено: <b>{referral_summary.get('total_debited_rub', 0)}₽</b>\n"
+        f"Текущий реф. баланс: <b>{referral_summary.get('total_balance_rub', 0)}₽</b>"
+    )
+
+
+def build_referral_text(
+    *,
+    referral_link: str,
+    summary: dict[str, int],
+) -> str:
+    return (
+        f"{tg_emoji(EMOJI_GEM, '💎')} <b>Реферальная программа</b>\n\n"
+        f"Возврат: <b>{REFERRAL_REWARD_PERCENT}%</b> от оплаты приглашенного пользователя.\n\n"
+        f"Ваша ссылка:\n<code>{referral_link}</code>\n\n"
+        f"Приглашено: <b>{summary.get('referrals_count', 0)}</b>\n"
+        f"Реф. баланс: <b>{summary.get('balance_rub', 0)}₽</b>\n"
+        f"Начислено всего: <b>{summary.get('earned_rub', 0)}₽</b>\n"
+        f"Списано/выведено: <b>{summary.get('debited_rub', 0)}₽</b>"
     )
 
 
@@ -255,6 +284,23 @@ def parse_int(raw: str) -> int | None:
         return int(raw.strip())
     except ValueError:
         return None
+
+
+def parse_start_referrer_tg_user_id(message: Message) -> int | None:
+    raw = (message.text or "").strip()
+    if not raw:
+        return None
+    parts = raw.split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+    payload = parts[1].strip()
+    if not payload.startswith("ref_"):
+        return None
+    referral_raw = payload[len("ref_") :].strip()
+    if not referral_raw.isdigit():
+        return None
+    referral_tg_user_id = int(referral_raw)
+    return referral_tg_user_id if referral_tg_user_id > 0 else None
 
 
 def normalize_username_candidate(raw: str) -> str | None:
@@ -656,8 +702,23 @@ def create_router(
     admin_ids = set(admin_tg_ids)
     yk = yookassa_client or YooKassaClient(shop_id="", secret_key="", return_url="https://t.me")
 
+    async def build_admin_panel_text_with_referrals() -> str:
+        referral_summary = await db.get_referral_admin_summary()
+        return build_admin_panel_text(referral_summary=referral_summary)
+
     async def build_checkout_context_text() -> str:
         return build_buy_months_text()
+
+    async def build_referral_message_for_user(*, tg_user_id: int, user_id: int, bot) -> str:
+        summary = await db.get_referral_summary_for_user(user_id)
+        me = await bot.get_me()
+        username = (me.username or "").strip()
+        referral_link = (
+            f"https://t.me/{username}?start=ref_{tg_user_id}"
+            if username
+            else f"ref_{tg_user_id}"
+        )
+        return build_referral_text(referral_link=referral_link, summary=summary)
 
     async def build_payment_message(
         *,
@@ -751,16 +812,28 @@ def create_router(
             tg_user_id=message.from_user.id,
         )
         await state.clear()
+        referrer_tg_user_id = parse_start_referrer_tg_user_id(message)
         await ensure_user(
             db,
             message.from_user,
             bot=message.bot,
             admin_tg_ids=admin_ids,
         )
+        referral_bound = False
+        if (
+            referrer_tg_user_id is not None
+            and referrer_tg_user_id != message.from_user.id
+        ):
+            referral_bound = await db.bind_referrer_by_tg_user_ids(
+                referred_tg_user_id=message.from_user.id,
+                referrer_tg_user_id=referrer_tg_user_id,
+            )
         await message.answer(
             build_welcome_text(),
             reply_markup=main_menu_keyboard(),
         )
+        if referral_bound:
+            await message.answer("Реферальная привязка сохранена.")
 
     @router.message(Command("help"))
     async def cmd_help(message: Message, state: FSMContext) -> None:
@@ -853,6 +926,34 @@ def create_router(
         )
         await send_status(db=db, bot_chat_id=message.chat.id, bot=message.bot, user_id=user_id)
 
+    @router.message(Command("ref"))
+    async def cmd_ref(message: Message, state: FSMContext) -> None:
+        if await handle_blocked_message(db, message):
+            return
+        if message.from_user is None:
+            return
+        await hide_friend_picker_reply_keyboard_if_needed(
+            state=state,
+            bot=message.bot,
+            tg_user_id=message.from_user.id,
+        )
+        await state.clear()
+        user_id = await ensure_user(
+            db,
+            message.from_user,
+            bot=message.bot,
+            admin_tg_ids=admin_ids,
+        )
+        await message.answer(
+            await build_referral_message_for_user(
+                tg_user_id=message.from_user.id,
+                user_id=user_id,
+                bot=message.bot,
+            ),
+            reply_markup=back_to_menu_keyboard(),
+            parse_mode="HTML",
+        )
+
     @router.message(Command("admin"))
     async def cmd_admin(message: Message, state: FSMContext) -> None:
         if await handle_blocked_message(db, message):
@@ -869,7 +970,11 @@ def create_router(
             await message.answer("Доступ запрещен.")
             return
         await state.clear()
-        await message.answer(build_admin_panel_text(), reply_markup=admin_panel_keyboard(), parse_mode="HTML")
+        await message.answer(
+            await build_admin_panel_text_with_referrals(),
+            reply_markup=admin_panel_keyboard(),
+            parse_mode="HTML",
+        )
 
     async def ensure_admin_message_access(message: Message, state: FSMContext) -> bool:
         if message.from_user is None:
@@ -908,7 +1013,7 @@ def create_router(
         await state.clear()
         await edit_or_send(
             callback,
-            text=build_admin_panel_text(),
+            text=await build_admin_panel_text_with_referrals(),
             reply_markup=admin_panel_keyboard(),
             parse_mode="HTML",
         )
@@ -923,7 +1028,7 @@ def create_router(
         await state.clear()
         await edit_or_send(
             callback,
-            text=build_admin_panel_text(),
+            text=await build_admin_panel_text_with_referrals(),
             reply_markup=admin_panel_keyboard(),
             parse_mode="HTML",
         )
@@ -1090,6 +1195,24 @@ def create_router(
             text=(
                 "Формат: <tg_user_id> <proxy_id|all>\n"
                 "Пример: 123456789 42 или 123456789 all"
+            ),
+            reply_markup=admin_cancel_keyboard(),
+            parse_mode=None,
+        )
+        await callback.answer()
+
+    @router.callback_query(F.data == "admin:ref_debit")
+    async def cb_admin_ref_debit(callback: CallbackQuery, state: FSMContext) -> None:
+        if await handle_blocked_callback(db, callback):
+            return
+        if not await ensure_admin_callback_access(callback, state):
+            return
+        await state.set_state(AdminStates.referral_debit)
+        await edit_or_send(
+            callback,
+            text=(
+                "Формат: <tg_user_id> <сумма_руб> [комментарий]\n"
+                "Пример: 123456789 500 Выплата за март"
             ),
             reply_markup=admin_cancel_keyboard(),
             parse_mode=None,
@@ -1412,6 +1535,55 @@ def create_router(
             reply_markup=admin_panel_keyboard(),
         )
 
+    @router.message(AdminStates.referral_debit)
+    async def admin_state_referral_debit(message: Message, state: FSMContext) -> None:
+        if await handle_blocked_message(db, message):
+            return
+        if not await ensure_admin_message_access(message, state):
+            return
+        payload = extract_text_payload(message)
+        if payload is None:
+            await message.answer("Неверный формат.")
+            return
+        parts = payload.split(maxsplit=2)
+        if len(parts) < 2:
+            await message.answer("Формат: <tg_user_id> <сумма_руб> [комментарий]")
+            return
+        tg_user_id = parse_int(parts[0])
+        amount_rub = parse_int(parts[1])
+        if tg_user_id is None or amount_rub is None or amount_rub <= 0:
+            await message.answer("tg_user_id и сумма должны быть положительными числами.")
+            return
+        comment = parts[2].strip() if len(parts) > 2 else ""
+        admin_marker = f"admin:{message.from_user.id}"
+        if comment:
+            comment = f"{comment} | {admin_marker}"
+        else:
+            comment = admin_marker
+
+        changed, new_balance = await db.debit_referral_balance_by_tg_user_id(
+            tg_user_id=tg_user_id,
+            amount_rub=amount_rub,
+            comment=comment,
+        )
+        await state.clear()
+        if not changed:
+            await message.answer(
+                (
+                    "Не удалось списать реферальный баланс.\n"
+                    f"Текущий доступный баланс: {new_balance}₽."
+                ),
+                reply_markup=admin_panel_keyboard(),
+            )
+            return
+        await message.answer(
+            (
+                f"Списано: {amount_rub}₽ у пользователя {tg_user_id}.\n"
+                f"Новый реф. баланс: {new_balance}₽."
+            ),
+            reply_markup=admin_panel_keyboard(),
+        )
+
     @router.callback_query(F.data == "menu:home_clear")
     async def cb_home_clear(callback: CallbackQuery, state: FSMContext) -> None:
         if await handle_blocked_callback(db, callback):
@@ -1454,6 +1626,28 @@ def create_router(
         await edit_or_send(
             callback,
             text=build_instruction_text(),
+            reply_markup=back_to_menu_keyboard(),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+
+    @router.callback_query(F.data == "menu:ref")
+    async def cb_ref(callback: CallbackQuery) -> None:
+        if await handle_blocked_callback(db, callback):
+            return
+        user_id = await ensure_user(
+            db,
+            callback.from_user,
+            bot=callback.bot,
+            admin_tg_ids=admin_ids,
+        )
+        await edit_or_send(
+            callback,
+            text=await build_referral_message_for_user(
+                tg_user_id=callback.from_user.id,
+                user_id=user_id,
+                bot=callback.bot,
+            ),
             reply_markup=back_to_menu_keyboard(),
             parse_mode="HTML",
         )

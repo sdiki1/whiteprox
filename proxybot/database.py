@@ -68,6 +68,10 @@ class Database:
                 username TEXT,
                 first_name TEXT,
                 last_name TEXT,
+                referrer_user_id INTEGER REFERENCES users(id),
+                referral_balance_rub INTEGER NOT NULL DEFAULT 0,
+                referral_total_earned_rub INTEGER NOT NULL DEFAULT 0,
+                referral_total_debited_rub INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -160,7 +164,19 @@ class Database:
                 blocked_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS referral_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_user_id INTEGER NOT NULL REFERENCES users(id),
+                referred_user_id INTEGER REFERENCES users(id),
+                payment_id INTEGER REFERENCES payments(id),
+                amount_rub INTEGER NOT NULL,
+                direction TEXT NOT NULL CHECK(direction IN ('credit', 'debit')),
+                comment TEXT,
+                created_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_tg_user_id ON users(tg_user_id);
+            CREATE INDEX IF NOT EXISTS idx_users_referrer_user_id ON users(referrer_user_id);
             CREATE INDEX IF NOT EXISTS idx_payments_user_status ON payments(user_id, status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_yookassa_payment_id
                 ON payments(yookassa_payment_id)
@@ -174,10 +190,16 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_proxy_delivery_logs_proxy_link_id ON proxy_delivery_logs(proxy_link_id);
             CREATE INDEX IF NOT EXISTS idx_user_temp_messages_user_kind ON user_temp_messages(user_id, kind);
             CREATE INDEX IF NOT EXISTS idx_banned_users_tg_user_id ON banned_users(tg_user_id);
+            CREATE INDEX IF NOT EXISTS idx_referral_transactions_referrer
+                ON referral_transactions(referrer_user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_referral_transactions_payment
+                ON referral_transactions(payment_id);
             """
         )
         await self.ensure_payments_columns()
         await self.ensure_subscriptions_columns()
+        await self.ensure_users_referral_columns()
+        await self.ensure_referral_transactions_table()
         await self.seed_plans()
         await self.conn.commit()
 
@@ -226,6 +248,54 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE subscriptions ADD COLUMN notified_expiring_2days INTEGER NOT NULL DEFAULT 0"
             )
+
+    async def ensure_users_referral_columns(self) -> None:
+        cursor = await self.conn.execute("PRAGMA table_info(users)")
+        rows = await cursor.fetchall()
+        await cursor.close()
+        existing = {str(row["name"]) for row in rows}
+
+        if "referrer_user_id" not in existing:
+            await self.conn.execute(
+                "ALTER TABLE users ADD COLUMN referrer_user_id INTEGER"
+            )
+        if "referral_balance_rub" not in existing:
+            await self.conn.execute(
+                "ALTER TABLE users ADD COLUMN referral_balance_rub INTEGER NOT NULL DEFAULT 0"
+            )
+        if "referral_total_earned_rub" not in existing:
+            await self.conn.execute(
+                "ALTER TABLE users ADD COLUMN referral_total_earned_rub INTEGER NOT NULL DEFAULT 0"
+            )
+        if "referral_total_debited_rub" not in existing:
+            await self.conn.execute(
+                "ALTER TABLE users ADD COLUMN referral_total_debited_rub INTEGER NOT NULL DEFAULT 0"
+            )
+
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_referrer_user_id ON users(referrer_user_id)"
+        )
+
+    async def ensure_referral_transactions_table(self) -> None:
+        await self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS referral_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_user_id INTEGER NOT NULL REFERENCES users(id),
+                referred_user_id INTEGER REFERENCES users(id),
+                payment_id INTEGER REFERENCES payments(id),
+                amount_rub INTEGER NOT NULL,
+                direction TEXT NOT NULL CHECK(direction IN ('credit', 'debit')),
+                comment TEXT,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_referral_transactions_referrer
+                ON referral_transactions(referrer_user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_referral_transactions_payment
+                ON referral_transactions(payment_id);
+            """
+        )
 
     async def seed_plans(self) -> None:
         for plan in DEFAULT_PLANS:
@@ -333,6 +403,177 @@ class Database:
         row = await cursor.fetchone()
         await cursor.close()
         return dict(row) if row is not None else None
+
+    async def bind_referrer_by_tg_user_ids(
+        self,
+        *,
+        referred_tg_user_id: int,
+        referrer_tg_user_id: int,
+    ) -> bool:
+        if referred_tg_user_id <= 0 or referrer_tg_user_id <= 0:
+            return False
+        if referred_tg_user_id == referrer_tg_user_id:
+            return False
+
+        cursor = await self.conn.execute(
+            "SELECT id FROM users WHERE tg_user_id = ?",
+            (referred_tg_user_id,),
+        )
+        referred_row = await cursor.fetchone()
+        await cursor.close()
+        if referred_row is None:
+            return False
+
+        cursor = await self.conn.execute(
+            "SELECT id FROM users WHERE tg_user_id = ?",
+            (referrer_tg_user_id,),
+        )
+        referrer_row = await cursor.fetchone()
+        await cursor.close()
+        if referrer_row is None:
+            return False
+
+        referred_user_id = int(referred_row["id"])
+        referrer_user_id = int(referrer_row["id"])
+        if referred_user_id == referrer_user_id:
+            return False
+
+        cursor = await self.conn.execute(
+            """
+            UPDATE users
+            SET referrer_user_id = ?, updated_at = ?
+            WHERE id = ? AND referrer_user_id IS NULL
+            """,
+            (referrer_user_id, now_ts(), referred_user_id),
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
+    async def get_referral_summary_for_user(self, user_id: int) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                referral_balance_rub,
+                referral_total_earned_rub,
+                referral_total_debited_rub
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+
+        cursor = await self.conn.execute(
+            "SELECT COUNT(*) AS cnt FROM users WHERE referrer_user_id = ?",
+            (user_id,),
+        )
+        referrals_row = await cursor.fetchone()
+        await cursor.close()
+
+        return {
+            "balance_rub": int(row["referral_balance_rub"]) if row is not None else 0,
+            "earned_rub": int(row["referral_total_earned_rub"]) if row is not None else 0,
+            "debited_rub": int(row["referral_total_debited_rub"]) if row is not None else 0,
+            "referrals_count": int(referrals_row["cnt"]) if referrals_row is not None else 0,
+        }
+
+    async def get_referral_admin_summary(self) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS users_with_referrer,
+                COALESCE(SUM(referral_balance_rub), 0) AS total_balance_rub,
+                COALESCE(SUM(referral_total_earned_rub), 0) AS total_earned_rub,
+                COALESCE(SUM(referral_total_debited_rub), 0) AS total_debited_rub
+            FROM users
+            """
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row is None:
+            return {
+                "users_with_referrer": 0,
+                "total_balance_rub": 0,
+                "total_earned_rub": 0,
+                "total_debited_rub": 0,
+            }
+        return {
+            "users_with_referrer": int(row["users_with_referrer"]),
+            "total_balance_rub": int(row["total_balance_rub"]),
+            "total_earned_rub": int(row["total_earned_rub"]),
+            "total_debited_rub": int(row["total_debited_rub"]),
+        }
+
+    async def debit_referral_balance_by_tg_user_id(
+        self,
+        *,
+        tg_user_id: int,
+        amount_rub: int,
+        comment: str | None = None,
+    ) -> tuple[bool, int]:
+        amount = max(0, int(amount_rub))
+        if tg_user_id <= 0 or amount <= 0:
+            return False, 0
+
+        cursor = await self.conn.execute(
+            """
+            SELECT id, referral_balance_rub
+            FROM users
+            WHERE tg_user_id = ?
+            """,
+            (tg_user_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row is None:
+            return False, 0
+
+        user_id = int(row["id"])
+        balance = int(row["referral_balance_rub"])
+        if balance < amount:
+            return False, balance
+
+        timestamp = now_ts()
+        await self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            await self.conn.execute(
+                """
+                UPDATE users
+                SET
+                    referral_balance_rub = referral_balance_rub - ?,
+                    referral_total_debited_rub = referral_total_debited_rub + ?,
+                    updated_at = ?
+                WHERE id = ? AND referral_balance_rub >= ?
+                """,
+                (amount, amount, timestamp, user_id, amount),
+            )
+            await self.conn.execute(
+                """
+                INSERT INTO referral_transactions (
+                    referrer_user_id,
+                    referred_user_id,
+                    payment_id,
+                    amount_rub,
+                    direction,
+                    comment,
+                    created_at
+                )
+                VALUES (?, NULL, NULL, ?, 'debit', ?, ?)
+                """,
+                (user_id, amount, (comment or "").strip() or None, timestamp),
+            )
+            cursor = await self.conn.execute(
+                "SELECT referral_balance_rub FROM users WHERE id = ?",
+                (user_id,),
+            )
+            new_row = await cursor.fetchone()
+            await cursor.close()
+            await self.conn.commit()
+            return True, int(new_row["referral_balance_rub"]) if new_row is not None else 0
+        except Exception:
+            await self.conn.rollback()
+            raise
 
     async def get_all_tg_user_ids(self) -> list[int]:
         cursor = await self.conn.execute(
@@ -554,6 +795,66 @@ class Database:
             if cursor.rowcount == 0:
                 await self.conn.rollback()
                 return None
+
+            cursor = await self.conn.execute(
+                "SELECT amount_rub FROM payments WHERE id = ?",
+                (payment_id,),
+            )
+            payment_row = await cursor.fetchone()
+            await cursor.close()
+            payment_amount_rub = int(payment_row["amount_rub"]) if payment_row is not None else 0
+            if payment_amount_rub > 0:
+                cursor = await self.conn.execute(
+                    "SELECT referrer_user_id FROM users WHERE id = ?",
+                    (payer_user_id,),
+                )
+                ref_row = await cursor.fetchone()
+                await cursor.close()
+                referrer_user_id = (
+                    int(ref_row["referrer_user_id"])
+                    if ref_row is not None and ref_row["referrer_user_id"] is not None
+                    else None
+                )
+                referral_amount = payment_amount_rub // 2
+                if (
+                    referrer_user_id is not None
+                    and referrer_user_id > 0
+                    and referrer_user_id != payer_user_id
+                    and referral_amount > 0
+                ):
+                    await self.conn.execute(
+                        """
+                        UPDATE users
+                        SET
+                            referral_balance_rub = referral_balance_rub + ?,
+                            referral_total_earned_rub = referral_total_earned_rub + ?,
+                            updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (referral_amount, referral_amount, timestamp, referrer_user_id),
+                    )
+                    await self.conn.execute(
+                        """
+                        INSERT INTO referral_transactions (
+                            referrer_user_id,
+                            referred_user_id,
+                            payment_id,
+                            amount_rub,
+                            direction,
+                            comment,
+                            created_at
+                        )
+                        VALUES (?, ?, ?, ?, 'credit', ?, ?)
+                        """,
+                        (
+                            referrer_user_id,
+                            payer_user_id,
+                            payment_id,
+                            referral_amount,
+                            "referral reward 50%",
+                            timestamp,
+                        ),
+                    )
 
             cursor = await self.conn.execute(
                 """

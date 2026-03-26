@@ -27,6 +27,7 @@ async def setup_bot_commands(bot: Bot) -> None:
             BotCommand(command="buy", description="Оформить доступ"),
             BotCommand(command="my_links", description="Мои прокси"),
             BotCommand(command="status", description="Статус подписки"),
+            BotCommand(command="ref", description="Реферальная программа"),
         ]
     )
 

@@ -21,7 +21,7 @@ async def expiration_worker(bot: Bot, db: Database, check_interval: int) -> None
                     await bot.send_message(
                         tg_user_id,
                         (
-                            "Оформите доступ сейчас, чтобы не остаться без прокси и быть всегда на связи!\n"
+                            "Оформите доступ сейчас, чтобы всегда быть всегда на связи! 👋🏻\n"
                             "Команда: /buy"
                         ),
                     )

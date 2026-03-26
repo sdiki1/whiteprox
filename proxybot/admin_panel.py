@@ -18,6 +18,19 @@ DEFAULT_BAN_TEXT = "Доступ к боту ограничен админист
 BLOCKED_TG_USER_ID = 1664076316
 SESSION_COOKIE_NAME = "whiteprox_admin_session"
 
+SECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("dashboard", "Dashboard", "📊"),
+    ("users", "Users", "👤"),
+    ("messages", "Messages", "✉️"),
+    ("subscriptions", "Subscriptions", "📅"),
+    ("payments", "Payments", "💰"),
+    ("statistics", "Statistics", "📈"),
+    ("contents", "Contents", "📋"),
+    ("verify-identity", "Verify Identity", "🔍"),
+)
+SECTIONS_MAP = {key: (title, icon) for key, title, icon in SECTIONS}
+SECTION_PATTERN = "dashboard|users|messages|subscriptions|payments|statistics|contents|verify-identity"
+
 
 def now_ts() -> int:
     return int(datetime.now(tz=timezone.utc).timestamp())
@@ -58,31 +71,49 @@ def _page_template(*, title: str, content: str) -> str:
         "<meta name='viewport' content='width=device-width, initial-scale=1' />"
         f"<title>{escape(title)}</title>"
         "<style>"
-        ":root{--bg:#f6f7fb;--panel:#fff;--txt:#0f172a;--muted:#64748b;--acc:#0ea5e9;--ok:#16a34a;--err:#dc2626;--br:#e2e8f0;}"
-        "html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}"
-        ".wrap{max-width:1200px;margin:24px auto;padding:0 16px;}"
-        ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}"
-        ".card{background:var(--panel);border:1px solid var(--br);border-radius:14px;padding:14px;box-shadow:0 6px 20px rgba(15,23,42,.04);}"
-        ".head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}"
-        "h1{font-size:24px;margin:0;}h2{font-size:16px;margin:0 0 8px;}h3{font-size:14px;margin:0 0 8px;}"
-        "p{margin:6px 0;color:var(--muted);}small{color:var(--muted);}"
-        "form{display:grid;gap:8px;}"
-        "input,textarea,button{font:inherit;}"
-        "input,textarea{border:1px solid var(--br);border-radius:10px;padding:10px;background:#fff;}"
-        "textarea{min-height:90px;resize:vertical;}"
-        "button{border:none;border-radius:10px;padding:10px 12px;background:var(--acc);color:#fff;cursor:pointer;}"
-        "button.alt{background:#0f766e;}button.danger{background:var(--err);}button.ghost{background:#475569;}"
-        ".flash{padding:10px 12px;border-radius:10px;margin:0 0 12px;}"
-        ".flash.ok{background:#ecfdf5;color:#166534;border:1px solid #bbf7d0;}"
-        ".flash.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}"
+        ":root{--bg:#0b1320;--panel:#101d30;--panel2:#0f1a2a;--txt:#e2e8f0;--muted:#8ea3bf;--acc:#00c2ff;--ok:#22c55e;--err:#ef4444;--warn:#f59e0b;--br:#22344d;--chip:#13243a;}"
+        "*{box-sizing:border-box;}"
+        "html,body{margin:0;padding:0;background:radial-gradient(1200px 500px at 10% -10%,#163056 0%,transparent 55%),radial-gradient(900px 450px at 110% -20%,#0a3a49 0%,transparent 55%),var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}"
+        "a{color:inherit;text-decoration:none;}"
+        ".layout{display:grid;grid-template-columns:280px 1fr;min-height:100vh;}"
+        ".sidebar{border-right:1px solid var(--br);background:linear-gradient(180deg,#101b2c 0%,#0c1524 100%);padding:18px 14px;position:sticky;top:0;height:100vh;}"
+        ".brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;margin-bottom:14px;}"
+        ".brand small{display:block;color:var(--muted);font-weight:500;font-size:12px;}"
+        ".nav{display:grid;gap:8px;margin-top:12px;}"
+        ".nav a{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--br);border-radius:12px;background:var(--panel2);color:#c9d5e5;font-size:14px;}"
+        ".nav a.active{background:linear-gradient(180deg,#173256,#102543);border-color:#2d4f7b;color:#fff;box-shadow:0 8px 20px rgba(0,0,0,.25);}"
+        ".sidebar .hint{margin-top:14px;color:var(--muted);font-size:12px;line-height:1.45;}"
+        ".main{padding:18px 20px 28px;}"
+        ".topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}"
+        ".title{font-size:24px;font-weight:800;letter-spacing:.2px;}"
+        ".title small{display:block;font-size:12px;color:var(--muted);font-weight:500;margin-top:4px;}"
+        ".flash{padding:10px 12px;border-radius:10px;margin:0 0 12px;border:1px solid transparent;font-size:14px;}"
+        ".flash.ok{background:#052e1b;color:#86efac;border-color:#166534;}"
+        ".flash.err{background:#3a1111;color:#fecaca;border-color:#7f1d1d;}"
+        ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;}"
+        ".card{background:linear-gradient(180deg,var(--panel) 0%,#0d1929 100%);border:1px solid var(--br);border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);}"
+        ".card h2{margin:0 0 8px;font-size:16px;}"
+        ".card h3{margin:0 0 8px;font-size:14px;}"
+        ".stat{font-size:13px;color:var(--muted);margin:6px 0;}"
+        ".stat b{color:#fff;}"
+        ".chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--br);border-radius:999px;padding:5px 10px;font-size:12px;color:#bfd2e6;}"
         "table{width:100%;border-collapse:collapse;font-size:13px;}"
         "th,td{border-bottom:1px solid var(--br);padding:8px;text-align:left;vertical-align:top;}"
-        "th{color:#334155;font-weight:600;background:#f8fafc;}"
-        "code{background:#f1f5f9;padding:2px 6px;border-radius:6px;}"
-        ".row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}"
-        ".row>*{flex:1;min-width:120px;}"
-        ".mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}"
-        "@media (max-width:640px){.wrap{margin:10px auto;}.card{padding:12px;}}"
+        "th{color:#d3dfef;font-weight:600;background:#0f1d30;}"
+        "td{color:#c2d2e5;}"
+        "form{display:grid;gap:8px;}"
+        "input,textarea,button{font:inherit;}"
+        "input,textarea{border:1px solid var(--br);border-radius:10px;padding:10px;background:#0c1828;color:#e2e8f0;}"
+        "textarea{min-height:95px;resize:vertical;}"
+        "button{border:none;border-radius:10px;padding:10px 12px;background:linear-gradient(180deg,#00b7ff 0%,#0099dd 100%);color:#fff;cursor:pointer;font-weight:600;}"
+        "button.alt{background:linear-gradient(180deg,#22c55e 0%,#16a34a 100%);}"
+        "button.warn{background:linear-gradient(180deg,#f59e0b 0%,#d97706 100%);}"
+        "button.danger{background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);}"
+        "button.ghost{background:#2b3f5d;}"
+        "code{background:#16283f;border:1px solid var(--br);padding:2px 6px;border-radius:6px;}"
+        ".muted{color:var(--muted);font-size:13px;}"
+        ".stack{display:grid;gap:12px;}"
+        "@media (max-width:980px){.layout{grid-template-columns:1fr;}.sidebar{height:auto;position:relative;border-right:none;border-bottom:1px solid var(--br);} .main{padding:14px;}}"
         "</style>"
         "</head>"
         "<body>"
@@ -122,11 +153,21 @@ class AdminWebPanel:
             [
                 web.get(self.path, self._handle_index),
                 web.get(f"{self.path}/", self._handle_index),
+                web.get(f"{self.path}/{{section:{SECTION_PATTERN}}}", self._handle_section),
                 web.post(f"{self.path}/login", self._handle_login),
                 web.post(f"{self.path}/logout", self._handle_logout),
                 web.post(f"{self.path}/action/{{action}}", self._handle_action),
             ]
         )
+
+    def _route_for(self, section: str) -> str:
+        safe = section if section in SECTIONS_MAP else "dashboard"
+        return f"{self.path}/{safe}"
+
+    def _normalize_section(self, section: str | None) -> str:
+        if section and section in SECTIONS_MAP:
+            return section
+        return "dashboard"
 
     def _purge_sessions(self) -> None:
         ts = now_ts()
@@ -147,7 +188,14 @@ class AdminWebPanel:
             return False
         return True
 
-    def _redirect(self, *, message: str = "", error: str = "", inspect_tg: str = "") -> web.Response:
+    def _redirect(
+        self,
+        *,
+        section: str = "dashboard",
+        message: str = "",
+        error: str = "",
+        inspect_tg: str = "",
+    ) -> web.Response:
         params: dict[str, str] = {}
         if message:
             params["m"] = message
@@ -156,7 +204,7 @@ class AdminWebPanel:
         if inspect_tg:
             params["inspect_tg"] = inspect_tg
         query = f"?{urlencode(params)}" if params else ""
-        raise web.HTTPFound(f"{self.path}{query}")
+        raise web.HTTPFound(f"{self._route_for(section)}{query}")
 
     async def _handle_login(self, request: web.Request) -> web.Response:
         if not self.enabled:
@@ -164,10 +212,10 @@ class AdminWebPanel:
         form = await request.post()
         password = str(form.get("password") or "").strip()
         if not secrets.compare_digest(password, self.password):
-            self._redirect(error="Неверный пароль.")
+            self._redirect(section="dashboard", error="Invalid credentials")
         token = secrets.token_urlsafe(32)
         self._sessions[token] = now_ts() + self.session_ttl_sec
-        response = web.HTTPFound(self.path)
+        response = web.HTTPFound(self._route_for("dashboard"))
         response.set_cookie(
             SESSION_COOKIE_NAME,
             token,
@@ -193,23 +241,33 @@ class AdminWebPanel:
                 text=_page_template(
                     title="Admin Panel Disabled",
                     content=(
-                        "<div class='wrap'><div class='card'>"
-                        "<h1>Admin Panel Disabled</h1>"
-                        "<p>Set <code>ADMIN_PANEL_PASSWORD</code> to enable web admin panel.</p>"
-                        "</div></div>"
+                        "<div class='layout'><main class='main'>"
+                        "<div class='card'><h1>Admin Panel Disabled</h1>"
+                        "<p class='muted'>Set <code>ADMIN_PANEL_PASSWORD</code> to enable web admin panel.</p>"
+                        "</div></main></div>"
                     ),
                 ),
                 content_type="text/html",
             )
-
         if not self._is_authenticated(request):
             return web.Response(text=self._render_login(error=str(request.query.get("e") or "")), content_type="text/html")
+        section = self._normalize_section(str(request.query.get("section") or "dashboard"))
+        self._redirect(section=section)
+        return web.Response(text="")
 
+    async def _handle_section(self, request: web.Request) -> web.Response:
+        section = self._normalize_section(str(request.match_info.get("section") or "dashboard"))
+        if not self._is_authenticated(request):
+            return web.Response(text=self._render_login(error=str(request.query.get("e") or "")), content_type="text/html")
         message = str(request.query.get("m") or "").strip()
         error = str(request.query.get("e") or "").strip()
-        inspect_tg_raw = str(request.query.get("inspect_tg") or "").strip()
-        inspect_tg = parse_int(inspect_tg_raw)
-        html = await self._render_dashboard(message=message, error=error, inspect_tg=inspect_tg)
+        inspect_tg = parse_int(str(request.query.get("inspect_tg") or "").strip())
+        html = await self._render_section_page(
+            section=section,
+            message=message,
+            error=error,
+            inspect_tg=inspect_tg,
+        )
         return web.Response(text=html, content_type="text/html")
 
     async def _handle_action(self, request: web.Request) -> web.Response:
@@ -217,32 +275,33 @@ class AdminWebPanel:
             raise web.HTTPFound(self.path)
         action = str(request.match_info.get("action") or "").strip()
         form = await request.post()
+        section = self._normalize_section(str(form.get("section") or "dashboard"))
         inspect_tg = str(form.get("inspect_tg") or "").strip()
         try:
             if action == "broadcast_all":
                 message = await self._action_broadcast_all(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "broadcast_user":
                 message = await self._action_broadcast_user(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "ban":
                 message = await self._action_ban(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "unban":
                 message = await self._action_unban(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "grant_proxies":
                 message = await self._action_grant_proxies(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "remove_proxies":
                 message = await self._action_remove_proxies(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
             if action == "referral_debit":
                 message = await self._action_referral_debit(form)
-                self._redirect(message=message, inspect_tg=inspect_tg)
-            self._redirect(error=f"Неизвестное действие: {action}", inspect_tg=inspect_tg)
+                self._redirect(section=section, message=message, inspect_tg=inspect_tg)
+            self._redirect(section=section, error=f"Unknown action: {action}", inspect_tg=inspect_tg)
         except ValueError as exc:
-            self._redirect(error=str(exc), inspect_tg=inspect_tg)
+            self._redirect(section=section, error=str(exc), inspect_tg=inspect_tg)
         return web.Response(text="")
 
     async def _action_broadcast_all(self, form: Any) -> str:
@@ -409,69 +468,65 @@ class AdminWebPanel:
     def _render_login(self, *, error: str = "") -> str:
         flash = f"<div class='flash err'>{escape(error)}</div>" if error else ""
         body = (
-            "<div class='wrap'>"
-            "<div class='card' style='max-width:420px;margin:80px auto;'>"
-            "<h1>Web Admin</h1>"
-            "<p>Войдите для управления ботом.</p>"
+            "<div class='layout'><main class='main' style='max-width:520px;margin:80px auto;'>"
+            "<div class='card'>"
+            "<h1 style='margin:0 0 10px;'>🔑 Login</h1>"
+            "<p class='muted'>TeleAdminPanel-style access for whiteprox bot administration.</p>"
             f"{flash}"
             f"<form method='post' action='{escape(self.path)}/login'>"
-            "<input type='password' name='password' placeholder='Пароль админ-панели' required />"
-            "<button type='submit'>Войти</button>"
+            "<input type='password' name='password' placeholder='Password' required />"
+            "<button type='submit'>Sign In</button>"
             "</form>"
-            "</div>"
-            "</div>"
+            "</div></main></div>"
         )
         return _page_template(title="Web Admin Login", content=body)
 
-    async def _render_dashboard(self, *, message: str = "", error: str = "", inspect_tg: int | None = None) -> str:
-        referral = await self.db.get_referral_admin_summary()
-        free_pool = await self.db.count_free_pool()
-        users = await self.db.list_users_with_stats(limit=500, offset=0)
+    def _render_sidebar(self, *, section: str) -> str:
+        links: list[str] = []
+        for key, title, icon in SECTIONS:
+            cls = "active" if key == section else ""
+            links.append(
+                f"<a class='{cls}' href='{escape(self._route_for(key))}'>"
+                f"<span>{escape(icon)}</span><span>{escape(title)}</span>"
+                "</a>"
+            )
+        return (
+            "<aside class='sidebar'>"
+            "<div class='brand'>"
+            "<div style='font-size:24px;'>🛡️</div>"
+            "<div>"
+            "WhiteProxy Admin"
+            "<small>based on TeleAdminPanel sections</small>"
+            "</div>"
+            "</div>"
+            f"<nav class='nav'>{''.join(links)}</nav>"
+            "<p class='hint'>Use this panel for fast moderation, messaging and proxy lifecycle operations.</p>"
+            "</aside>"
+        )
 
-        inspect_block = ""
-        inspect_form_value = str(inspect_tg) if inspect_tg is not None else ""
-        if inspect_tg is not None and inspect_tg > 0:
-            user_row = await self.db.get_user_by_tg_user_id(inspect_tg)
-            if user_row is None:
-                inspect_block = "<div class='card'><h2>Прокси пользователя</h2><p>Пользователь не найден.</p></div>"
-            else:
-                user_id = int(user_row["id"])
-                ban = await self.db.get_user_ban(inspect_tg)
-                links = await self.db.get_all_links_for_user(user_id)
-                rows: list[str] = []
-                for row in links:
-                    rows.append(
-                        "<tr>"
-                        f"<td>{int(row['id'])}</td>"
-                        f"<td>{int(row['subscription_id'])}</td>"
-                        f"<td>{int(row['device_number'])}</td>"
-                        f"<td>{escape(str(row['status']))}</td>"
-                        f"<td>{escape(format_ts(int(row['expires_at'])))}</td>"
-                        f"<td class='mono'>{escape(str(row['link']))}</td>"
-                        "</tr>"
-                    )
-                table = (
-                    "<table><thead><tr>"
-                    "<th>ID</th><th>Sub</th><th>Device</th><th>Status</th><th>Expires</th><th>Link</th>"
-                    "</tr></thead><tbody>"
-                    + ("".join(rows) if rows else "<tr><td colspan='6'>Прокси отсутствуют.</td></tr>")
-                    + "</tbody></table>"
-                )
-                inspect_block = (
-                    "<div class='card'>"
-                    "<h2>Прокси пользователя</h2>"
-                    f"<p>tg_user_id: <code>{inspect_tg}</code>, бан: <b>{'да' if ban is not None or inspect_tg == BLOCKED_TG_USER_ID else 'нет'}</b></p>"
-                    f"{table}"
-                    "</div>"
-                )
+    def _render_flash(self, *, message: str, error: str) -> str:
+        out = ""
+        if message:
+            out += f"<div class='flash ok'>{escape(message)}</div>"
+        if error:
+            out += f"<div class='flash err'>{escape(error)}</div>"
+        return out
 
-        user_rows: list[str] = []
+    def _hidden_inputs(self, *, section: str, inspect_tg: int | None) -> str:
+        inspect_value = "" if inspect_tg is None else str(inspect_tg)
+        return (
+            f"<input type='hidden' name='section' value='{escape(section)}' />"
+            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_value)}' />"
+        )
+
+    def _users_table_html(self, users: list[dict[str, Any]]) -> str:
+        rows: list[str] = []
         for row in users:
             tg_user_id = int(row["tg_user_id"])
             username = f"@{row['username']}" if row.get("username") else "-"
             active_count = int(row.get("active_proxies") or 0)
             banned_flag = int(row.get("is_banned") or 0) == 1 or tg_user_id == BLOCKED_TG_USER_ID
-            user_rows.append(
+            rows.append(
                 "<tr>"
                 f"<td>{tg_user_id}</td>"
                 f"<td>{escape(username)}</td>"
@@ -479,97 +534,237 @@ class AdminWebPanel:
                 f"<td>{'да' if banned_flag else 'нет'}</td>"
                 "</tr>"
             )
-        users_table = (
+        return (
             "<table><thead><tr>"
             "<th>tg_user_id</th><th>username</th><th>Активных прокси</th><th>Бан</th>"
             "</tr></thead><tbody>"
-            + ("".join(user_rows) if user_rows else "<tr><td colspan='4'>Пользователей пока нет.</td></tr>")
+            + ("".join(rows) if rows else "<tr><td colspan='4'>Пользователей пока нет.</td></tr>")
             + "</tbody></table>"
         )
 
-        flash = ""
-        if message:
-            flash += f"<div class='flash ok'>{escape(message)}</div>"
-        if error:
-            flash += f"<div class='flash err'>{escape(error)}</div>"
+    def _inspect_links_html(
+        self,
+        *,
+        inspect_tg: int | None,
+        user_row: dict[str, Any] | None,
+        ban_row: dict[str, Any] | None,
+        links: list[dict[str, Any]],
+    ) -> str:
+        if inspect_tg is None or inspect_tg <= 0:
+            return ""
+        if user_row is None:
+            return "<div class='card'><h2>Прокси пользователя</h2><p class='muted'>Пользователь не найден.</p></div>"
 
-        body = (
-            "<div class='wrap'>"
-            "<div class='head'>"
-            "<h1>Web Admin Panel</h1>"
-            f"<form method='post' action='{escape(self.path)}/logout'><button class='ghost' type='submit'>Выйти</button></form>"
-            "</div>"
-            f"{flash}"
-            "<div class='grid'>"
-            "<div class='card'>"
-            "<h2>Рефералы</h2>"
-            f"<p>Пользователей с реферером: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
-            f"<p>Начислено всего: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
-            f"<p>Списано/выведено: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
-            f"<p>Текущий реф. баланс: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
-            "</div>"
-            "<div class='card'>"
-            "<h2>Система</h2>"
-            f"<p>Свободно прокси в пуле: <b>{int(free_pool)}</b></p>"
-            f"<p>Пользователей в выборке: <b>{len(users)}</b></p>"
-            "<p><small>Последние 500 пользователей из БД.</small></p>"
-            "</div>"
+        rows: list[str] = []
+        for row in links:
+            rows.append(
+                "<tr>"
+                f"<td>{int(row['id'])}</td>"
+                f"<td>{int(row['subscription_id'])}</td>"
+                f"<td>{int(row['device_number'])}</td>"
+                f"<td>{escape(str(row['status']))}</td>"
+                f"<td>{escape(format_ts(int(row['expires_at'])))}</td>"
+                f"<td><code>{escape(str(row['link']))}</code></td>"
+                "</tr>"
+            )
+        table = (
+            "<table><thead><tr>"
+            "<th>ID</th><th>Sub</th><th>Device</th><th>Status</th><th>Expires</th><th>Link</th>"
+            "</tr></thead><tbody>"
+            + ("".join(rows) if rows else "<tr><td colspan='6'>Прокси отсутствуют.</td></tr>")
+            + "</tbody></table>"
+        )
+        banned = ban_row is not None or inspect_tg == BLOCKED_TG_USER_ID
+        return (
             "<div class='card'>"
             "<h2>Прокси пользователя</h2>"
-            f"<form method='get' action='{escape(self.path)}'>"
-            "<input name='inspect_tg' placeholder='tg_user_id' required />"
-            "<button type='submit' class='alt'>Открыть</button>"
-            "</form>"
-            "</div>"
-            "</div>"
-            "<div class='grid' style='margin-top:14px;'>"
-            "<div class='card'><h3>Рассылка всем</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/broadcast_all'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<textarea name='text' placeholder='Текст рассылки' required></textarea>"
-            "<button type='submit'>Отправить</button></form></div>"
-            "<div class='card'><h3>Рассылка пользователю</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/broadcast_user'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<textarea name='text' placeholder='Текст сообщения' required></textarea>"
-            "<button type='submit'>Отправить</button></form></div>"
-            "<div class='card'><h3>Блокировка</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/ban'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<textarea name='reason' placeholder='Причина (необязательно)'></textarea>"
-            "<button type='submit' class='danger'>Заблокировать</button></form>"
-            f"<form method='post' action='{escape(self.path)}/action/unban' style='margin-top:8px;'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<button type='submit' class='alt'>Разблокировать</button></form></div>"
-            "<div class='card'><h3>Начислить прокси</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/grant_proxies'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<input name='devices_count' placeholder='кол-во прокси (например 1)' required />"
-            "<input name='days' placeholder='дней (по умолчанию 30)' />"
-            "<button type='submit' class='alt'>Начислить</button></form></div>"
-            "<div class='card'><h3>Удалить прокси</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/remove_proxies'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<input name='proxy_id' placeholder='proxy_id или all' required />"
-            "<button type='submit' class='danger'>Удалить</button></form></div>"
-            "<div class='card'><h3>Списать реферал</h3>"
-            f"<form method='post' action='{escape(self.path)}/action/referral_debit'>"
-            f"<input type='hidden' name='inspect_tg' value='{escape(inspect_form_value)}' />"
-            "<input name='tg_user_id' placeholder='tg_user_id' required />"
-            "<input name='amount_rub' placeholder='сумма ₽' required />"
-            "<input name='comment' placeholder='комментарий (необязательно)' />"
-            "<button type='submit' class='danger'>Списать</button></form></div>"
-            "</div>"
-            "<div class='card' style='margin-top:14px;'>"
-            "<h2>Пользователи</h2>"
-            f"{users_table}"
-            "</div>"
-            f"{inspect_block}"
+            f"<p class='stat'>tg_user_id: <b>{inspect_tg}</b> | бан: <b>{'да' if banned else 'нет'}</b></p>"
+            f"{table}"
             "</div>"
         )
-        return _page_template(title="WhiteProxy Web Admin", content=body)
+
+    async def _render_section_page(
+        self,
+        *,
+        section: str,
+        message: str,
+        error: str,
+        inspect_tg: int | None,
+    ) -> str:
+        referral = await self.db.get_referral_admin_summary()
+        free_pool = await self.db.count_free_pool()
+        users = await self.db.list_users_with_stats(limit=500, offset=0)
+
+        inspect_user_row: dict[str, Any] | None = None
+        inspect_ban_row: dict[str, Any] | None = None
+        inspect_links: list[dict[str, Any]] = []
+        if inspect_tg is not None and inspect_tg > 0:
+            inspect_user_row = await self.db.get_user_by_tg_user_id(inspect_tg)
+            if inspect_user_row is not None:
+                inspect_ban_row = await self.db.get_user_ban(inspect_tg)
+                inspect_links = await self.db.get_all_links_for_user(int(inspect_user_row["id"]))
+
+        total_users = len(users)
+        total_active_proxies = sum(int(row.get("active_proxies") or 0) for row in users)
+        total_banned = sum(
+            1
+            for row in users
+            if int(row.get("is_banned") or 0) == 1 or int(row["tg_user_id"]) == BLOCKED_TG_USER_ID
+        )
+
+        title, icon = SECTIONS_MAP.get(section, ("Dashboard", "📊"))
+        flash = self._render_flash(message=message, error=error)
+        hidden = self._hidden_inputs(section=section, inspect_tg=inspect_tg)
+
+        if section == "dashboard":
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>System</h2>"
+                f"<p class='stat'>Users in view: <b>{total_users}</b></p>"
+                f"<p class='stat'>Active proxies: <b>{total_active_proxies}</b></p>"
+                f"<p class='stat'>Banned users: <b>{total_banned}</b></p>"
+                f"<p class='stat'>Free pool: <b>{int(free_pool)}</b></p></div>"
+                "<div class='card'><h2>Referrals</h2>"
+                f"<p class='stat'>Users with referrer: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
+                f"<p class='stat'>Earned total: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Debited total: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Current referral balance: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                "</div>"
+                "<div class='card'><h2>Quick inspect</h2>"
+                f"<form method='get' action='{escape(self._route_for('users'))}'>"
+                "<input name='inspect_tg' placeholder='tg_user_id' required />"
+                "<button class='alt' type='submit'>Open user proxies</button>"
+                "</form></div>"
+                "</div>"
+            )
+
+        elif section == "users":
+            section_content = (
+                "<div class='stack'>"
+                "<div class='card'><h2>User list</h2>"
+                f"{self._users_table_html(users)}"
+                "</div>"
+                "<div class='card'><h2>Inspect user proxies</h2>"
+                f"<form method='get' action='{escape(self._route_for('users'))}'>"
+                "<input name='inspect_tg' placeholder='tg_user_id' required />"
+                "<button type='submit' class='alt'>Inspect</button>"
+                "</form></div>"
+                f"{self._inspect_links_html(inspect_tg=inspect_tg, user_row=inspect_user_row, ban_row=inspect_ban_row, links=inspect_links)}"
+                "</div>"
+            )
+
+        elif section == "messages":
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>Broadcast all</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/broadcast_all'>"
+                f"{hidden}"
+                "<textarea name='text' placeholder='Текст рассылки' required></textarea>"
+                "<button type='submit'>Send to all</button></form></div>"
+                "<div class='card'><h2>Broadcast user</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/broadcast_user'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<textarea name='text' placeholder='Текст сообщения' required></textarea>"
+                "<button type='submit' class='alt'>Send to user</button></form></div>"
+                "</div>"
+            )
+
+        elif section == "subscriptions":
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>Grant proxies</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/grant_proxies'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<input name='devices_count' placeholder='кол-во прокси (например 1)' required />"
+                "<input name='days' placeholder='дней (по умолчанию 30)' />"
+                "<button class='alt' type='submit'>Grant</button></form></div>"
+                "<div class='card'><h2>Remove proxies</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/remove_proxies'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<input name='proxy_id' placeholder='proxy_id или all' required />"
+                "<button class='danger' type='submit'>Remove</button></form></div>"
+                "</div>"
+            )
+
+        elif section == "payments":
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>Referral finance</h2>"
+                f"<p class='stat'>Earned: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Debited: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Current balance: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                "</div>"
+                "<div class='card'><h2>Debit referral</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/referral_debit'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<input name='amount_rub' placeholder='сумма ₽' required />"
+                "<input name='comment' placeholder='комментарий (необязательно)' />"
+                "<button class='warn' type='submit'>Debit</button></form></div>"
+                "</div>"
+            )
+
+        elif section == "statistics":
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>Global metrics</h2>"
+                f"<p class='stat'>Total users: <b>{total_users}</b></p>"
+                f"<p class='stat'>Total active proxies: <b>{total_active_proxies}</b></p>"
+                f"<p class='stat'>Banned users: <b>{total_banned}</b></p>"
+                f"<p class='stat'>Free proxy pool: <b>{int(free_pool)}</b></p>"
+                "</div>"
+                "<div class='card'><h2>Referral metrics</h2>"
+                f"<p class='stat'>Users with referrer: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
+                f"<p class='stat'>Earned total: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Debited total: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                "</div>"
+                "</div>"
+            )
+
+        elif section == "contents":
+            section_content = (
+                "<div class='stack'>"
+                "<div class='card'><h2>Proxy content (links)</h2>"
+                "<p class='muted'>Use this section as operational content list for issued proxy links.</p>"
+                f"<form method='get' action='{escape(self._route_for('contents'))}'>"
+                "<input name='inspect_tg' placeholder='tg_user_id' required />"
+                "<button class='alt' type='submit'>Load user links</button>"
+                "</form></div>"
+                f"{self._inspect_links_html(inspect_tg=inspect_tg, user_row=inspect_user_row, ban_row=inspect_ban_row, links=inspect_links)}"
+                "</div>"
+            )
+
+        else:
+            section_content = (
+                "<div class='grid'>"
+                "<div class='card'><h2>Ban user</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/ban'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<textarea name='reason' placeholder='Причина (необязательно)'></textarea>"
+                "<button class='danger' type='submit'>Ban</button></form></div>"
+                "<div class='card'><h2>Unban user</h2>"
+                f"<form method='post' action='{escape(self.path)}/action/unban'>"
+                f"{hidden}"
+                "<input name='tg_user_id' placeholder='tg_user_id' required />"
+                "<button class='alt' type='submit'>Unban</button></form></div>"
+                "</div>"
+            )
+
+        body = (
+            "<div class='layout'>"
+            f"{self._render_sidebar(section=section)}"
+            "<main class='main'>"
+            "<div class='topbar'>"
+            f"<div class='title'>{escape(icon)} {escape(title)}<small>TeleAdminPanel reference layout, upgraded for whiteprox</small></div>"
+            f"<form method='post' action='{escape(self.path)}/logout'><button class='ghost' type='submit'>Logout</button></form>"
+            "</div>"
+            f"{flash}"
+            f"{section_content}"
+            "</main>"
+            "</div>"
+        )
+        return _page_template(title=f"WhiteProxy Admin • {title}", content=body)

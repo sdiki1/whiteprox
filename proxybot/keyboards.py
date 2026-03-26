@@ -94,14 +94,18 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def months_keyboard() -> InlineKeyboardMarkup:
+def months_keyboard(*, monthly_price_rub: int) -> InlineKeyboardMarkup:
     options = (1, 3, 6, 12)
     rows: list[list[InlineKeyboardButton]] = []
     current_row: list[InlineKeyboardButton] = []
     for value in options:
+        total_amount = total_price_rub(
+            monthly_price_rub=monthly_price_rub,
+            months_count=value,
+        )
         current_row.append(
             _button(
-                text=f"{value} {_month_word(value)}",
+                text=f"{value} {_month_word(value)} • {total_amount}₽",
                 callback_data=f"buymonths:{value}",
                 style="primary",
                 icon_custom_emoji_id=EMOJI_BOX,

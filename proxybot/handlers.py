@@ -35,7 +35,6 @@ from .keyboards import (
     activate_first_proxy_keyboard,
     activate_proxy_keyboard,
     back_to_menu_keyboard,
-    devices_keyboard,
     friend_target_input_keyboard,
     friend_user_picker_keyboard,
     main_menu_keyboard,
@@ -112,7 +111,7 @@ def build_instruction_text() -> str:
     return (
         f"{tg_emoji(EMOJI_GEM, '💎')} <b>Инструкция</b>\n"
         "1) Нажмите «Оформить доступ».\n"
-        "2) Выберите срок, пакет и получателя.\n"
+        "2) Выберите срок и получателя.\n"
         f"{pay_line}\n"
         "4) Откройте «Мои прокси» и активируйте прокси."
     )
@@ -185,7 +184,7 @@ def is_supported_months(months_count: int) -> bool:
 def build_buy_months_text() -> str:
     return (
         f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Оформление доступа</b>\n\n"
-        "Этап 1/3: выберите срок действия."
+        "Этап 1/2: выберите срок и стоимость."
     )
 
 
@@ -194,6 +193,16 @@ def build_devices_step_text(*, months_count: int) -> str:
         f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Этап 2/3</b>\n\n"
         f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
         "Теперь выберите пакет прокси."
+    )
+
+
+def build_purchase_target_text(*, plan: Plan, months_count: int) -> str:
+    return (
+        f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Этап 2/2</b>\n\n"
+        f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
+        f"Прокси в пакете: <b>{plan.devices_count}</b>\n"
+        f"Сумма: <b>{total_price_rub(monthly_price_rub=plan.price_rub, months_count=months_count)}₽</b>\n\n"
+        "Выберите, на кого оформить доступ."
     )
 
 
@@ -720,6 +729,13 @@ def create_router(
     async def build_checkout_context_text() -> str:
         return build_buy_months_text()
 
+    async def get_checkout_plan() -> Plan | None:
+        plans = await db.get_plans()
+        if not plans:
+            return None
+        plans_sorted = sorted(plans, key=lambda item: (item.devices_count, item.price_rub, item.code))
+        return plans_sorted[0]
+
     async def build_referral_message_for_user(*, tg_user_id: int, user_id: int, bot) -> str:
         summary = await db.get_referral_summary_for_user(user_id)
         referral_code = await db.get_or_create_referral_code(user_id=user_id)
@@ -889,9 +905,13 @@ def create_router(
             bot=message.bot,
             admin_tg_ids=admin_ids,
         )
+        checkout_plan = await get_checkout_plan()
+        if checkout_plan is None:
+            await message.answer("Тарифы не настроены.")
+            return
         await message.answer(
             await build_checkout_context_text(),
-            reply_markup=months_keyboard(),
+            reply_markup=months_keyboard(monthly_price_rub=checkout_plan.price_rub),
             parse_mode="HTML",
         )
 
@@ -1711,10 +1731,14 @@ def create_router(
         if user_id <= 0:
             await callback.answer("Ошибка профиля", show_alert=True)
             return
+        checkout_plan = await get_checkout_plan()
+        if checkout_plan is None:
+            await callback.answer("Тарифы не настроены", show_alert=True)
+            return
         await edit_or_send(
             callback,
             text=await build_checkout_context_text(),
-            reply_markup=months_keyboard(),
+            reply_markup=months_keyboard(monthly_price_rub=checkout_plan.price_rub),
             parse_mode="HTML",
         )
         await callback.answer()
@@ -1824,18 +1848,15 @@ def create_router(
         if user_id <= 0:
             await callback.answer("Ошибка профиля", show_alert=True)
             return
-        plans = await db.get_plans()
-        if not plans:
+        checkout_plan = await get_checkout_plan()
+        if checkout_plan is None:
             await callback.answer("Тарифы не настроены", show_alert=True)
             return
 
         await edit_or_send(
             callback,
-            text=build_devices_step_text(months_count=months_count),
-            reply_markup=devices_keyboard(
-                plans,
-                months_count=months_count,
-            ),
+            text=build_purchase_target_text(plan=checkout_plan, months_count=months_count),
+            reply_markup=purchase_target_keyboard(months_count=months_count, plan_code=checkout_plan.code),
             parse_mode="HTML",
         )
         await callback.answer()
@@ -1867,13 +1888,7 @@ def create_router(
 
         await edit_or_send(
             callback,
-            text=(
-                f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>Этап 3/3</b>\n\n"
-                f"Срок: <b>{months_count} {month_word(months_count)}</b>\n"
-                f"Прокси в пакете: <b>{plan.devices_count}</b>\n"
-                f"Сумма: <b>{total_price_rub(monthly_price_rub=plan.price_rub, months_count=months_count)}₽</b>\n\n"
-                "Выберите, на кого оформить доступ."
-            ),
+            text=build_purchase_target_text(plan=plan, months_count=months_count),
             reply_markup=purchase_target_keyboard(months_count=months_count, plan_code=plan.code),
             parse_mode="HTML",
         )
@@ -1915,7 +1930,10 @@ def create_router(
             await state.clear()
 
         if action == "back":
-            plans = await db.get_plans()
+            checkout_plan = await get_checkout_plan()
+            if checkout_plan is None:
+                await callback.answer("Тарифы не настроены", show_alert=True)
+                return
             if callback.message is not None:
                 try:
                     await callback.message.delete()
@@ -1923,11 +1941,8 @@ def create_router(
                     pass
             await callback.bot.send_message(
                 callback.from_user.id,
-                build_devices_step_text(months_count=months_count),
-                reply_markup=devices_keyboard(
-                    plans,
-                    months_count=months_count,
-                ),
+                await build_checkout_context_text(),
+                reply_markup=months_keyboard(monthly_price_rub=checkout_plan.price_rub),
                 parse_mode="HTML",
             )
             await callback.answer()

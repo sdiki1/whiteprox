@@ -19,14 +19,14 @@ BLOCKED_TG_USER_ID = 1664076316
 SESSION_COOKIE_NAME = "whiteprox_admin_session"
 
 SECTIONS: tuple[tuple[str, str, str], ...] = (
-    ("dashboard", "Dashboard", "📊"),
-    ("users", "Users", "👤"),
-    ("messages", "Messages", "✉️"),
-    ("subscriptions", "Subscriptions", "📅"),
-    ("payments", "Payments", "💰"),
-    ("statistics", "Statistics", "📈"),
-    ("contents", "Contents", "📋"),
-    ("verify-identity", "Verify Identity", "🔍"),
+    ("dashboard", "Дашборд", "📊"),
+    ("users", "Пользователи", "👤"),
+    ("messages", "Сообщения", "✉️"),
+    ("subscriptions", "Подписки", "📅"),
+    ("payments", "Платежи", "💰"),
+    ("statistics", "Статистика", "📈"),
+    ("contents", "Контент", "📋"),
+    ("verify-identity", "Проверка", "🔍"),
 )
 SECTIONS_MAP = {key: (title, icon) for key, title, icon in SECTIONS}
 SECTION_PATTERN = "dashboard|users|messages|subscriptions|payments|statistics|contents|verify-identity"
@@ -208,11 +208,11 @@ class AdminWebPanel:
 
     async def _handle_login(self, request: web.Request) -> web.Response:
         if not self.enabled:
-            raise web.HTTPServiceUnavailable(text="Admin panel disabled. Set ADMIN_PANEL_PASSWORD.")
+            raise web.HTTPServiceUnavailable(text="Админ-панель отключена. Укажите ADMIN_PANEL_PASSWORD.")
         form = await request.post()
         password = str(form.get("password") or "").strip()
         if not secrets.compare_digest(password, self.password):
-            self._redirect(section="dashboard", error="Invalid credentials")
+            self._redirect(section="dashboard", error="Неверный пароль.")
         token = secrets.token_urlsafe(32)
         self._sessions[token] = now_ts() + self.session_ttl_sec
         response = web.HTTPFound(self._route_for("dashboard"))
@@ -239,11 +239,11 @@ class AdminWebPanel:
         if not self.enabled:
             return web.Response(
                 text=_page_template(
-                    title="Admin Panel Disabled",
+                    title="Админ-панель отключена",
                     content=(
                         "<div class='layout'><main class='main'>"
-                        "<div class='card'><h1>Admin Panel Disabled</h1>"
-                        "<p class='muted'>Set <code>ADMIN_PANEL_PASSWORD</code> to enable web admin panel.</p>"
+                        "<div class='card'><h1>Админ-панель отключена</h1>"
+                        "<p class='muted'>Укажите <code>ADMIN_PANEL_PASSWORD</code>, чтобы включить веб-админку.</p>"
                         "</div></main></div>"
                     ),
                 ),
@@ -299,7 +299,7 @@ class AdminWebPanel:
             if action == "referral_debit":
                 message = await self._action_referral_debit(form)
                 self._redirect(section=section, message=message, inspect_tg=inspect_tg)
-            self._redirect(section=section, error=f"Unknown action: {action}", inspect_tg=inspect_tg)
+            self._redirect(section=section, error=f"Неизвестное действие: {action}", inspect_tg=inspect_tg)
         except ValueError as exc:
             self._redirect(section=section, error=str(exc), inspect_tg=inspect_tg)
         return web.Response(text="")
@@ -470,16 +470,16 @@ class AdminWebPanel:
         body = (
             "<div class='layout'><main class='main' style='max-width:520px;margin:80px auto;'>"
             "<div class='card'>"
-            "<h1 style='margin:0 0 10px;'>🔑 Login</h1>"
-            "<p class='muted'>TeleAdminPanel-style access for whiteprox bot administration.</p>"
+            "<h1 style='margin:0 0 10px;'>🔑 Вход</h1>"
+            "<p class='muted'>Вход в веб-админку whiteprox.</p>"
             f"{flash}"
             f"<form method='post' action='{escape(self.path)}/login'>"
-            "<input type='password' name='password' placeholder='Password' required />"
-            "<button type='submit'>Sign In</button>"
+            "<input type='password' name='password' placeholder='Пароль' required />"
+            "<button type='submit'>Войти</button>"
             "</form>"
             "</div></main></div>"
         )
-        return _page_template(title="Web Admin Login", content=body)
+        return _page_template(title="Вход в админ-панель", content=body)
 
     def _render_sidebar(self, *, section: str) -> str:
         links: list[str] = []
@@ -495,12 +495,12 @@ class AdminWebPanel:
             "<div class='brand'>"
             "<div style='font-size:24px;'>🛡️</div>"
             "<div>"
-            "WhiteProxy Admin"
-            "<small>based on TeleAdminPanel sections</small>"
+            "WhiteProxy Админка"
+            "<small>в стиле разделов TeleAdminPanel</small>"
             "</div>"
             "</div>"
             f"<nav class='nav'>{''.join(links)}</nav>"
-            "<p class='hint'>Use this panel for fast moderation, messaging and proxy lifecycle operations.</p>"
+            "<p class='hint'>Панель для модерации, рассылок и управления жизненным циклом прокси.</p>"
             "</aside>"
         )
 
@@ -612,28 +612,28 @@ class AdminWebPanel:
             if int(row.get("is_banned") or 0) == 1 or int(row["tg_user_id"]) == BLOCKED_TG_USER_ID
         )
 
-        title, icon = SECTIONS_MAP.get(section, ("Dashboard", "📊"))
+        title, icon = SECTIONS_MAP.get(section, ("Дашборд", "📊"))
         flash = self._render_flash(message=message, error=error)
         hidden = self._hidden_inputs(section=section, inspect_tg=inspect_tg)
 
         if section == "dashboard":
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>System</h2>"
-                f"<p class='stat'>Users in view: <b>{total_users}</b></p>"
-                f"<p class='stat'>Active proxies: <b>{total_active_proxies}</b></p>"
-                f"<p class='stat'>Banned users: <b>{total_banned}</b></p>"
-                f"<p class='stat'>Free pool: <b>{int(free_pool)}</b></p></div>"
-                "<div class='card'><h2>Referrals</h2>"
-                f"<p class='stat'>Users with referrer: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
-                f"<p class='stat'>Earned total: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Debited total: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Current referral balance: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                "<div class='card'><h2>Система</h2>"
+                f"<p class='stat'>Пользователей в выборке: <b>{total_users}</b></p>"
+                f"<p class='stat'>Активных прокси: <b>{total_active_proxies}</b></p>"
+                f"<p class='stat'>Заблокированных: <b>{total_banned}</b></p>"
+                f"<p class='stat'>Свободных в пуле: <b>{int(free_pool)}</b></p></div>"
+                "<div class='card'><h2>Рефералы</h2>"
+                f"<p class='stat'>Пользователей с реферером: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
+                f"<p class='stat'>Начислено всего: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Списано всего: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Текущий реф. баланс: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
                 "</div>"
-                "<div class='card'><h2>Quick inspect</h2>"
+                "<div class='card'><h2>Быстрая проверка</h2>"
                 f"<form method='get' action='{escape(self._route_for('users'))}'>"
                 "<input name='inspect_tg' placeholder='tg_user_id' required />"
-                "<button class='alt' type='submit'>Open user proxies</button>"
+                "<button class='alt' type='submit'>Открыть прокси пользователя</button>"
                 "</form></div>"
                 "</div>"
             )
@@ -641,13 +641,13 @@ class AdminWebPanel:
         elif section == "users":
             section_content = (
                 "<div class='stack'>"
-                "<div class='card'><h2>User list</h2>"
+                "<div class='card'><h2>Список пользователей</h2>"
                 f"{self._users_table_html(users)}"
                 "</div>"
-                "<div class='card'><h2>Inspect user proxies</h2>"
+                "<div class='card'><h2>Проверка прокси пользователя</h2>"
                 f"<form method='get' action='{escape(self._route_for('users'))}'>"
                 "<input name='inspect_tg' placeholder='tg_user_id' required />"
-                "<button type='submit' class='alt'>Inspect</button>"
+                "<button type='submit' class='alt'>Проверить</button>"
                 "</form></div>"
                 f"{self._inspect_links_html(inspect_tg=inspect_tg, user_row=inspect_user_row, ban_row=inspect_ban_row, links=inspect_links)}"
                 "</div>"
@@ -656,70 +656,70 @@ class AdminWebPanel:
         elif section == "messages":
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>Broadcast all</h2>"
+                "<div class='card'><h2>Рассылка всем</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/broadcast_all'>"
                 f"{hidden}"
                 "<textarea name='text' placeholder='Текст рассылки' required></textarea>"
-                "<button type='submit'>Send to all</button></form></div>"
-                "<div class='card'><h2>Broadcast user</h2>"
+                "<button type='submit'>Отправить всем</button></form></div>"
+                "<div class='card'><h2>Рассылка пользователю</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/broadcast_user'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
                 "<textarea name='text' placeholder='Текст сообщения' required></textarea>"
-                "<button type='submit' class='alt'>Send to user</button></form></div>"
+                "<button type='submit' class='alt'>Отправить пользователю</button></form></div>"
                 "</div>"
             )
 
         elif section == "subscriptions":
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>Grant proxies</h2>"
+                "<div class='card'><h2>Начислить прокси</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/grant_proxies'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
                 "<input name='devices_count' placeholder='кол-во прокси (например 1)' required />"
                 "<input name='days' placeholder='дней (по умолчанию 30)' />"
-                "<button class='alt' type='submit'>Grant</button></form></div>"
-                "<div class='card'><h2>Remove proxies</h2>"
+                "<button class='alt' type='submit'>Начислить</button></form></div>"
+                "<div class='card'><h2>Удалить прокси</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/remove_proxies'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
                 "<input name='proxy_id' placeholder='proxy_id или all' required />"
-                "<button class='danger' type='submit'>Remove</button></form></div>"
+                "<button class='danger' type='submit'>Удалить</button></form></div>"
                 "</div>"
             )
 
         elif section == "payments":
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>Referral finance</h2>"
-                f"<p class='stat'>Earned: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Debited: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Current balance: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                "<div class='card'><h2>Реферальные финансы</h2>"
+                f"<p class='stat'>Начислено: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Списано: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Текущий баланс: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
                 "</div>"
-                "<div class='card'><h2>Debit referral</h2>"
+                "<div class='card'><h2>Списание рефералки</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/referral_debit'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
                 "<input name='amount_rub' placeholder='сумма ₽' required />"
                 "<input name='comment' placeholder='комментарий (необязательно)' />"
-                "<button class='warn' type='submit'>Debit</button></form></div>"
+                "<button class='warn' type='submit'>Списать</button></form></div>"
                 "</div>"
             )
 
         elif section == "statistics":
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>Global metrics</h2>"
-                f"<p class='stat'>Total users: <b>{total_users}</b></p>"
-                f"<p class='stat'>Total active proxies: <b>{total_active_proxies}</b></p>"
-                f"<p class='stat'>Banned users: <b>{total_banned}</b></p>"
-                f"<p class='stat'>Free proxy pool: <b>{int(free_pool)}</b></p>"
+                "<div class='card'><h2>Глобальные метрики</h2>"
+                f"<p class='stat'>Всего пользователей: <b>{total_users}</b></p>"
+                f"<p class='stat'>Всего активных прокси: <b>{total_active_proxies}</b></p>"
+                f"<p class='stat'>Заблокированных: <b>{total_banned}</b></p>"
+                f"<p class='stat'>Свободных прокси в пуле: <b>{int(free_pool)}</b></p>"
                 "</div>"
-                "<div class='card'><h2>Referral metrics</h2>"
-                f"<p class='stat'>Users with referrer: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
-                f"<p class='stat'>Earned total: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Debited total: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
+                "<div class='card'><h2>Реферальные метрики</h2>"
+                f"<p class='stat'>Пользователей с реферером: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
+                f"<p class='stat'>Начислено всего: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Списано всего: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
                 "</div>"
                 "</div>"
             )
@@ -727,11 +727,11 @@ class AdminWebPanel:
         elif section == "contents":
             section_content = (
                 "<div class='stack'>"
-                "<div class='card'><h2>Proxy content (links)</h2>"
-                "<p class='muted'>Use this section as operational content list for issued proxy links.</p>"
+                "<div class='card'><h2>Прокси-контент (ссылки)</h2>"
+                "<p class='muted'>Раздел для просмотра выданных прокси-ссылок по пользователю.</p>"
                 f"<form method='get' action='{escape(self._route_for('contents'))}'>"
                 "<input name='inspect_tg' placeholder='tg_user_id' required />"
-                "<button class='alt' type='submit'>Load user links</button>"
+                "<button class='alt' type='submit'>Загрузить ссылки пользователя</button>"
                 "</form></div>"
                 f"{self._inspect_links_html(inspect_tg=inspect_tg, user_row=inspect_user_row, ban_row=inspect_ban_row, links=inspect_links)}"
                 "</div>"
@@ -740,17 +740,17 @@ class AdminWebPanel:
         else:
             section_content = (
                 "<div class='grid'>"
-                "<div class='card'><h2>Ban user</h2>"
+                "<div class='card'><h2>Заблокировать пользователя</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/ban'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
                 "<textarea name='reason' placeholder='Причина (необязательно)'></textarea>"
-                "<button class='danger' type='submit'>Ban</button></form></div>"
-                "<div class='card'><h2>Unban user</h2>"
+                "<button class='danger' type='submit'>Заблокировать</button></form></div>"
+                "<div class='card'><h2>Разблокировать пользователя</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/unban'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
-                "<button class='alt' type='submit'>Unban</button></form></div>"
+                "<button class='alt' type='submit'>Разблокировать</button></form></div>"
                 "</div>"
             )
 
@@ -759,11 +759,11 @@ class AdminWebPanel:
             f"{self._render_sidebar(section=section)}"
             "<main class='main'>"
             "<div class='topbar'>"
-            f"<form method='post' action='{escape(self.path)}/logout'><button class='ghost' type='submit'>Logout</button></form>"
+            f"<form method='post' action='{escape(self.path)}/logout'><button class='ghost' type='submit'>Выйти</button></form>"
             "</div>"
             f"{flash}"
             f"{section_content}"
             "</main>"
             "</div>"
         )
-        return _page_template(title=f"WhiteProxy Admin • {title}", content=body)
+        return _page_template(title=f"WhiteProxy Админка • {title}", content=body)

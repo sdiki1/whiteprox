@@ -81,6 +81,9 @@ async def run() -> None:
         host=settings.webhook_host,
         port=settings.webhook_port,
         telegram_webhook_secret_token=settings.telegram_webhook_secret_token,
+        admin_panel_password=settings.admin_panel_password,
+        admin_panel_path=settings.admin_panel_path,
+        proxy_public_host=settings.proxy_public_host,
     )
     await webhook_server.start()
 

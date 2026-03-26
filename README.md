@@ -12,6 +12,7 @@ Telegram-бот для продажи персональных SOCKS5-прокс
 - Оплата через `ЮKassa`: сначала кнопка оплаты, потом кнопка активации.
 - Добавлена оплата `Telegram Stars` (курс в боте: `1₽ = 1.3⭐`, округление вверх до целой звезды).
 - Добавлена реферальная программа: с оплаты приглашенного пользователя рефереру начисляется `50%` на внутренний реферальный баланс.
+- Добавлена веб-админ-панель (`/admin`) с авторизацией по паролю.
 - Новый flow покупки: выбор `месяцев` -> выбор `тарифа` -> `себе или другу`.
 - Для покупки другу можно выбрать пользователя кнопкой Telegram (`request_user`), либо указать `tg_user_id`/`@username`/контакт.
 - После активации бот выдаёт SOCKS5 в формате Telegram:
@@ -76,6 +77,8 @@ docker compose up -d --build
 - `WEBHOOK_BIND_HOST` — host bind для публикации webhook-порта в `docker-compose`
 - `TELEGRAM_WEBHOOK_URL` — внешний base URL для Telegram webhook (если пусто, бот работает через polling)
 - `TELEGRAM_WEBHOOK_SECRET_TOKEN` — секретный токен для Telegram webhook
+- `ADMIN_PANEL_PASSWORD` — пароль входа в веб-админку (если пусто, веб-админка отключена)
+- `ADMIN_PANEL_PATH` — путь веб-админки (по умолчанию `/admin`)
 - `SERVER_IP` — публичный IP сервера (используется в `docker-compose`)
 - `SOCKS_BIND_HOST` — интерфейс bind SOCKS-сервиса
 - `SOCKS_PORT_RANGE` — диапазон портов SOCKS, например `30000-30199`
@@ -84,6 +87,7 @@ docker compose up -d --build
 HTTP-маршруты вебхуков:
 - `POST /webhook/` — вебхуки ЮKassa
 - `POST /telewebhook/` — вебхуки Telegram
+- `GET /admin` — веб-админ-панель (или ваш `ADMIN_PANEL_PATH`)
 
 ## Команды бота
 

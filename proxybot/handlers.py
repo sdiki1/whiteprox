@@ -57,6 +57,7 @@ BLOCKED_TG_USER_ID = 1664076316
 BLOCKED_USER_TEXT = "ЛАВРЕНТ ИДИ НАХУЙ, СУКА!\n\nЗа 25₽ мне на карту ты помилован"
 DEFAULT_BAN_TEXT = "Доступ к боту ограничен администратором."
 EMOJI_KEY = "5330115548900501467"
+EMOJI_CHAT = "5465132703458270101"
 STARS_PER_RUB = 1.3
 SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
 REFERRAL_REWARD_PERCENT = 50
@@ -119,11 +120,16 @@ def build_instruction_text() -> str:
 
 def build_welcome_text() -> str:
     return (
-        f"{tg_emoji(EMOJI_SHIELD, '🛡')} <b>{BOT_BRAND}</b> - панель персональных SOCKS5 в Telegram.\n\n"
+        "<b>"
+        f"{tg_emoji(EMOJI_SHIELD, '🛡')} WHTE PROXY - это самый лучший способ обхода блокировки телеграм.\n\n"
+        f"{tg_emoji(EMOJI_CHAT, '🗯')} Работает даже внутри БЕЛЫХ СПИСКОВ и ГЛУШИЛОК ИНТЕРНЕТА!\n\n"
         f"{tg_emoji(EMOJI_KEY, '🔑')} Оформление и активация прокси прямо в чате.\n\n"
-        "<blockquote>Можно оформить доступ для себя или подарить доступ другу "
-        "по tg_user_id/@username.</blockquote>\n\n"
-        f"{build_instruction_text()}"
+        f"{tg_emoji(EMOJI_GEM, '💎')} Инструкция\n"
+        "1) Нажмите «Оформить доступ».\n"
+        "2) Выберите срок, пакет и получателя.\n"
+        "3) Оплатите заказ и активируйте выдачу.\n"
+        "4) Откройте «мои прокси» и активируйте прокси."
+        "</b>"
     )
 
 

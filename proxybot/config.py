@@ -22,6 +22,8 @@ class Settings:
     webhook_port: int
     telegram_webhook_url: str
     telegram_webhook_secret_token: str
+    admin_panel_password: str
+    admin_panel_path: str
 
 
 def _int_env(name: str, default: int) -> int:
@@ -66,4 +68,6 @@ def load_settings() -> Settings:
         webhook_port=_int_env("WEBHOOK_PORT", 8080),
         telegram_webhook_url=os.getenv("TELEGRAM_WEBHOOK_URL", "").strip(),
         telegram_webhook_secret_token=os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "").strip(),
+        admin_panel_password=os.getenv("ADMIN_PANEL_PASSWORD", "").strip(),
+        admin_panel_path=os.getenv("ADMIN_PANEL_PATH", "/admin").strip() or "/admin",
     )

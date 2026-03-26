@@ -7,6 +7,7 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 
+from .admin_panel import AdminWebPanel
 from .database import Database
 from .database_postgres import PostgresDatabase
 
@@ -23,6 +24,9 @@ class WebhookServer:
         host: str,
         port: int,
         telegram_webhook_secret_token: str = "",
+        admin_panel_password: str = "",
+        admin_panel_path: str = "/admin",
+        proxy_public_host: str = "127.0.0.1",
     ) -> None:
         self.db = db
         self.bot = bot
@@ -30,6 +34,9 @@ class WebhookServer:
         self.host = host
         self.port = port
         self.telegram_webhook_secret_token = telegram_webhook_secret_token.strip()
+        self.admin_panel_password = admin_panel_password.strip()
+        self.admin_panel_path = admin_panel_path.strip() or "/admin"
+        self.proxy_public_host = proxy_public_host.strip() or "127.0.0.1"
 
         self._app = web.Application()
         self._app.add_routes(
@@ -38,6 +45,14 @@ class WebhookServer:
                 web.post("/telewebhook/", self._handle_telegram_webhook),
             ]
         )
+        self._admin_panel = AdminWebPanel(
+            db=self.db,
+            bot=self.bot,
+            proxy_public_host=self.proxy_public_host,
+            password=self.admin_panel_password,
+            path=self.admin_panel_path,
+        )
+        self._admin_panel.register(self._app)
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
 
@@ -49,6 +64,10 @@ class WebhookServer:
         logger.info("Webhook HTTP server started on %s:%s", self.host, self.port)
         logger.info("YooKassa webhook endpoint: /webhook/")
         logger.info("Telegram webhook endpoint: /telewebhook/")
+        if self._admin_panel.enabled:
+            logger.info("Web admin panel enabled: %s", self._admin_panel.path)
+        else:
+            logger.info("Web admin panel disabled (set ADMIN_PANEL_PASSWORD).")
 
     async def stop(self) -> None:
         if self._runner is not None:

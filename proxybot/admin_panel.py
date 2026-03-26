@@ -759,7 +759,6 @@ class AdminWebPanel:
             f"{self._render_sidebar(section=section)}"
             "<main class='main'>"
             "<div class='topbar'>"
-            f"<div class='title'>{escape(icon)} {escape(title)}<small>TeleAdminPanel reference layout, upgraded for whiteprox</small></div>"
             f"<form method='post' action='{escape(self.path)}/logout'><button class='ghost' type='submit'>Logout</button></form>"
             "</div>"
             f"{flash}"

@@ -42,6 +42,7 @@ from .keyboards import (
     months_keyboard,
     payment_keyboard,
     purchase_target_keyboard,
+    referral_system_keyboard,
     subscriptions_actions_keyboard,
 )
 from .pricing import total_price_rub
@@ -286,21 +287,26 @@ def parse_int(raw: str) -> int | None:
         return None
 
 
-def parse_start_referrer_tg_user_id(message: Message) -> int | None:
+def parse_start_ref_payload(message: Message) -> tuple[int | None, str | None]:
     raw = (message.text or "").strip()
     if not raw:
-        return None
+        return None, None
     parts = raw.split(maxsplit=1)
     if len(parts) != 2:
-        return None
+        return None, None
     payload = parts[1].strip()
     if not payload.startswith("ref_"):
-        return None
+        return None, None
     referral_raw = payload[len("ref_") :].strip()
-    if not referral_raw.isdigit():
-        return None
-    referral_tg_user_id = int(referral_raw)
-    return referral_tg_user_id if referral_tg_user_id > 0 else None
+    if not referral_raw:
+        return None, None
+    if referral_raw.isdigit():
+        referral_tg_user_id = int(referral_raw)
+        return (referral_tg_user_id if referral_tg_user_id > 0 else None), None
+    code = referral_raw.upper()
+    if not re.fullmatch(r"[A-Z0-9]{6,32}", code):
+        return None, None
+    return None, code
 
 
 def normalize_username_candidate(raw: str) -> str | None:
@@ -711,12 +717,13 @@ def create_router(
 
     async def build_referral_message_for_user(*, tg_user_id: int, user_id: int, bot) -> str:
         summary = await db.get_referral_summary_for_user(user_id)
+        referral_code = await db.get_or_create_referral_code(user_id=user_id)
         me = await bot.get_me()
         username = (me.username or "").strip()
         referral_link = (
-            f"https://t.me/{username}?start=ref_{tg_user_id}"
+            f"https://t.me/{username}?start=ref_{referral_code}"
             if username
-            else f"ref_{tg_user_id}"
+            else f"ref_{referral_code}"
         )
         return build_referral_text(referral_link=referral_link, summary=summary)
 
@@ -812,7 +819,7 @@ def create_router(
             tg_user_id=message.from_user.id,
         )
         await state.clear()
-        referrer_tg_user_id = parse_start_referrer_tg_user_id(message)
+        legacy_referrer_tg_user_id, referrer_code = parse_start_ref_payload(message)
         await ensure_user(
             db,
             message.from_user,
@@ -820,13 +827,18 @@ def create_router(
             admin_tg_ids=admin_ids,
         )
         referral_bound = False
-        if (
-            referrer_tg_user_id is not None
-            and referrer_tg_user_id != message.from_user.id
+        if referrer_code:
+            referral_bound = await db.bind_referrer_by_code(
+                referred_tg_user_id=message.from_user.id,
+                referral_code=referrer_code,
+            )
+        elif (
+            legacy_referrer_tg_user_id is not None
+            and legacy_referrer_tg_user_id != message.from_user.id
         ):
             referral_bound = await db.bind_referrer_by_tg_user_ids(
                 referred_tg_user_id=message.from_user.id,
-                referrer_tg_user_id=referrer_tg_user_id,
+                referrer_tg_user_id=legacy_referrer_tg_user_id,
             )
         await message.answer(
             build_welcome_text(),
@@ -950,7 +962,7 @@ def create_router(
                 user_id=user_id,
                 bot=message.bot,
             ),
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=referral_system_keyboard(),
             parse_mode="HTML",
         )
 
@@ -1648,10 +1660,33 @@ def create_router(
                 user_id=user_id,
                 bot=callback.bot,
             ),
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=referral_system_keyboard(),
             parse_mode="HTML",
         )
         await callback.answer()
+
+    @router.callback_query(F.data == "menu:ref_regen")
+    async def cb_ref_regen(callback: CallbackQuery) -> None:
+        if await handle_blocked_callback(db, callback):
+            return
+        user_id = await ensure_user(
+            db,
+            callback.from_user,
+            bot=callback.bot,
+            admin_tg_ids=admin_ids,
+        )
+        await db.rotate_referral_code(user_id=user_id)
+        await edit_or_send(
+            callback,
+            text=await build_referral_message_for_user(
+                tg_user_id=callback.from_user.id,
+                user_id=user_id,
+                bot=callback.bot,
+            ),
+            reply_markup=referral_system_keyboard(),
+            parse_mode="HTML",
+        )
+        await callback.answer("Новая реферальная ссылка создана.")
 
     @router.callback_query(F.data == "menu:plans")
     async def cb_plans(callback: CallbackQuery, state: FSMContext) -> None:

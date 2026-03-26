@@ -79,7 +79,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Рефералы",
+                    text="Реферальная система",
                     callback_data="menu:ref",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
@@ -369,7 +369,7 @@ def subscriptions_actions_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 _button(
-                    text="Рефералы",
+                    text="Реферальная система",
                     callback_data="menu:ref",
                     style="primary",
                     icon_custom_emoji_id=EMOJI_DOCS,
@@ -405,6 +405,36 @@ def back_to_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def referral_system_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _button(
+                    text="Обновить данные",
+                    callback_data="menu:ref",
+                    style="primary",
+                    icon_custom_emoji_id=EMOJI_DOCS,
+                )
+            ],
+            [
+                _button(
+                    text="Сгенерировать новую ссылку",
+                    callback_data="menu:ref_regen",
+                    style="success",
+                    icon_custom_emoji_id=EMOJI_GEM,
+                )
+            ],
+            [
+                _button(
+                    text="Меню",
+                    callback_data="menu:home_clear",
+                    icon_custom_emoji_id=EMOJI_SHIELD,
+                )
+            ],
+        ]
+    )
+
+
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -427,7 +457,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
                 _button(text="8) Удалить прокси", callback_data="admin:remove_proxies", style="danger"),
             ],
             [
-                _button(text="9) Списать реф.", callback_data="admin:ref_debit", style="danger"),
+                _button(text="9) Списать реферал", callback_data="admin:ref_debit", style="danger"),
             ],
             [
                 _button(text="Закрыть", callback_data="admin:close"),

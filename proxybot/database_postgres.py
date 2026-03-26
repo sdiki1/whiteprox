@@ -40,6 +40,7 @@ class PostgresDatabase:
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
+                    referral_code TEXT UNIQUE,
                     referrer_user_id BIGINT REFERENCES users(id),
                     referral_balance_rub INTEGER NOT NULL DEFAULT 0,
                     referral_total_earned_rub INTEGER NOT NULL DEFAULT 0,
@@ -149,6 +150,9 @@ class PostgresDatabase:
 
                 CREATE INDEX IF NOT EXISTS idx_users_tg_user_id ON users(tg_user_id);
                 CREATE INDEX IF NOT EXISTS idx_users_referrer_user_id ON users(referrer_user_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code
+                    ON users(referral_code)
+                    WHERE referral_code IS NOT NULL AND referral_code <> '';
                 CREATE INDEX IF NOT EXISTS idx_payments_user_status ON payments(user_id, status);
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_yookassa_payment_id
                     ON payments(yookassa_payment_id)
@@ -231,6 +235,12 @@ class PostgresDatabase:
             await cur.execute(
                 """
                 ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS referral_code TEXT
+                """
+            )
+            await cur.execute(
+                """
+                ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS referrer_user_id BIGINT REFERENCES users(id)
                 """
             )
@@ -255,6 +265,13 @@ class PostgresDatabase:
             await cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_users_referrer_user_id ON users(referrer_user_id)
+                """
+            )
+            await cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code
+                    ON users(referral_code)
+                    WHERE referral_code IS NOT NULL AND referral_code <> ''
                 """
             )
         await self.conn.commit()
@@ -425,6 +442,112 @@ class PostgresDatabase:
                 return False
             referrer_user_id = int(referrer_row["id"])
             if referrer_user_id == referred_user_id:
+                return False
+
+            await cur.execute(
+                """
+                UPDATE users
+                SET referrer_user_id = %s, updated_at = %s
+                WHERE id = %s AND referrer_user_id IS NULL
+                """,
+                (referrer_user_id, now_ts(), referred_user_id),
+            )
+            changed = cur.rowcount > 0
+        await self.conn.commit()
+        return changed
+
+    @staticmethod
+    def _generate_referral_code() -> str:
+        return secrets.token_hex(5).upper()
+
+    async def get_or_create_referral_code(self, *, user_id: int) -> str:
+        async with self.conn.cursor() as cur:
+            await cur.execute(
+                "SELECT referral_code FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            if row is not None and row["referral_code"]:
+                return str(row["referral_code"])
+
+        for _ in range(20):
+            candidate = self._generate_referral_code()
+            try:
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE users
+                        SET referral_code = %s, updated_at = %s
+                        WHERE id = %s AND (referral_code IS NULL OR referral_code = '')
+                        """,
+                        (candidate, now_ts(), user_id),
+                    )
+                    if cur.rowcount > 0:
+                        await self.conn.commit()
+                        return candidate
+                    await cur.execute(
+                        "SELECT referral_code FROM users WHERE id = %s",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+                if row is not None and row["referral_code"]:
+                    return str(row["referral_code"])
+            except psycopg.errors.UniqueViolation:
+                continue
+
+        raise RuntimeError("Failed to create referral code.")
+
+    async def rotate_referral_code(self, *, user_id: int) -> str:
+        for _ in range(20):
+            candidate = self._generate_referral_code()
+            try:
+                async with self.conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        UPDATE users
+                        SET referral_code = %s, updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (candidate, now_ts(), user_id),
+                    )
+                    if cur.rowcount <= 0:
+                        raise RuntimeError("User not found for referral code rotation.")
+                await self.conn.commit()
+                return candidate
+            except psycopg.errors.UniqueViolation:
+                continue
+
+        raise RuntimeError("Failed to rotate referral code.")
+
+    async def bind_referrer_by_code(
+        self,
+        *,
+        referred_tg_user_id: int,
+        referral_code: str,
+    ) -> bool:
+        code = (referral_code or "").strip().upper()
+        if referred_tg_user_id <= 0 or not code:
+            return False
+
+        async with self.conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id FROM users WHERE tg_user_id = %s",
+                (referred_tg_user_id,),
+            )
+            referred_row = await cur.fetchone()
+            if referred_row is None:
+                return False
+            referred_user_id = int(referred_row["id"])
+
+            await cur.execute(
+                "SELECT id FROM users WHERE referral_code = %s LIMIT 1",
+                (code,),
+            )
+            referrer_row = await cur.fetchone()
+            if referrer_row is None:
+                return False
+            referrer_user_id = int(referrer_row["id"])
+            if referred_user_id == referrer_user_id:
                 return False
 
             await cur.execute(

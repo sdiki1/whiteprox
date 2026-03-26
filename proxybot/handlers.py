@@ -16,6 +16,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     LabeledPrice,
     Message,
@@ -60,6 +61,7 @@ EMOJI_CHAT = "5465132703458270101"
 STARS_PER_RUB = 1.3
 SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
 REFERRAL_REWARD_PERCENT = 50
+HELP_ADMIN_USERNAME = "content_aii"
 
 
 class AdminStates(StatesGroup):
@@ -142,6 +144,19 @@ def build_help_text() -> str:
         "/ref — реферальная программа\n"
         "/help — помощь\n\n"
         f"{build_instruction_text()}"
+    )
+
+
+def help_admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Написать администратору",
+                    url=f"https://t.me/{HELP_ADMIN_USERNAME}",
+                )
+            ]
+        ]
     )
 
 
@@ -885,7 +900,13 @@ def create_router(
                 bot=message.bot,
                 admin_tg_ids=admin_ids,
             )
-        await message.answer(build_help_text())
+        await message.answer(
+            (
+                "Для связи и помощи перейдите к администратору:\n"
+                f"@{HELP_ADMIN_USERNAME}"
+            ),
+            reply_markup=help_admin_keyboard(),
+        )
 
     @router.message(Command("buy"))
     async def cmd_plans(message: Message, state: FSMContext) -> None:

@@ -177,10 +177,6 @@ class Database:
             );
 
             CREATE INDEX IF NOT EXISTS idx_users_tg_user_id ON users(tg_user_id);
-            CREATE INDEX IF NOT EXISTS idx_users_referrer_user_id ON users(referrer_user_id);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code
-                ON users(referral_code)
-                WHERE referral_code IS NOT NULL AND referral_code <> '';
             CREATE INDEX IF NOT EXISTS idx_payments_user_status ON payments(user_id, status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_yookassa_payment_id
                 ON payments(yookassa_payment_id)

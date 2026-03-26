@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from html import escape
+import os
 import secrets
 from typing import Any
 from urllib.parse import urlencode
@@ -9,6 +10,7 @@ from urllib.parse import urlencode
 from aiohttp import web
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.types import BufferedInputFile
 
 from .database import Database
 from .database_postgres import PostgresDatabase
@@ -306,31 +308,108 @@ class AdminWebPanel:
 
     async def _action_broadcast_all(self, form: Any) -> str:
         text = str(form.get("text") or "").strip()
-        if not text:
-            raise ValueError("Введите текст рассылки.")
+        media_kind, media_bytes, media_filename = self._extract_media(form)
+        if not text and media_kind is None:
+            raise ValueError("Введите текст или прикрепите фото/видео.")
         targets = await self.db.get_all_tg_user_ids()
         sent_ok = 0
         sent_fail = 0
         for tg_user_id in targets:
-            try:
-                await self.bot.send_message(int(tg_user_id), text, parse_mode=None)
+            ok = await self._send_payload(
+                tg_user_id=int(tg_user_id),
+                text=text,
+                media_kind=media_kind,
+                media_bytes=media_bytes,
+                media_filename=media_filename,
+            )
+            if ok:
                 sent_ok += 1
-            except (TelegramBadRequest, TelegramForbiddenError):
+            else:
                 sent_fail += 1
         return f"Рассылка всем завершена. Успешно: {sent_ok}, ошибок: {sent_fail}."
 
     async def _action_broadcast_user(self, form: Any) -> str:
         tg_user_id = parse_int(str(form.get("tg_user_id") or ""))
         text = str(form.get("text") or "").strip()
+        media_kind, media_bytes, media_filename = self._extract_media(form)
         if tg_user_id is None or tg_user_id <= 0:
             raise ValueError("tg_user_id должен быть положительным числом.")
-        if not text:
-            raise ValueError("Введите текст сообщения.")
-        try:
-            await self.bot.send_message(tg_user_id, text, parse_mode=None)
-        except (TelegramBadRequest, TelegramForbiddenError):
+        if not text and media_kind is None:
+            raise ValueError("Введите текст или прикрепите фото/видео.")
+        ok = await self._send_payload(
+            tg_user_id=tg_user_id,
+            text=text,
+            media_kind=media_kind,
+            media_bytes=media_bytes,
+            media_filename=media_filename,
+        )
+        if not ok:
             raise ValueError("Не удалось отправить сообщение пользователю.")
         return f"Сообщение отправлено пользователю {tg_user_id}."
+
+    def _extract_media(self, form: Any) -> tuple[str | None, bytes | None, str | None]:
+        media = form.get("media")
+        if media is None:
+            return None, None, None
+
+        file_obj = getattr(media, "file", None)
+        filename_raw = str(getattr(media, "filename", "") or "").strip()
+        if file_obj is None or not filename_raw:
+            return None, None, None
+
+        content_type = str(getattr(media, "content_type", "") or "").lower()
+        filename = os.path.basename(filename_raw)
+        extension = os.path.splitext(filename)[1].lower()
+
+        media_kind: str | None = None
+        if content_type.startswith("image/") or extension in {".jpg", ".jpeg", ".png", ".webp"}:
+            media_kind = "photo"
+        elif content_type.startswith("video/") or extension in {".mp4", ".mov", ".mkv", ".webm"}:
+            media_kind = "video"
+        if media_kind is None:
+            raise ValueError("Поддерживаются только фото и видео.")
+
+        media_bytes = file_obj.read()
+        if not media_bytes:
+            raise ValueError("Загруженный файл пустой.")
+        return media_kind, media_bytes, filename
+
+    async def _send_payload(
+        self,
+        *,
+        tg_user_id: int,
+        text: str,
+        media_kind: str | None,
+        media_bytes: bytes | None,
+        media_filename: str | None,
+    ) -> bool:
+        try:
+            if media_kind == "photo":
+                if media_bytes is None:
+                    return False
+                photo = BufferedInputFile(media_bytes, filename=media_filename or "image.jpg")
+                await self.bot.send_photo(
+                    tg_user_id,
+                    photo=photo,
+                    caption=text or None,
+                    parse_mode=None,
+                )
+                return True
+            if media_kind == "video":
+                if media_bytes is None:
+                    return False
+                video = BufferedInputFile(media_bytes, filename=media_filename or "video.mp4")
+                await self.bot.send_video(
+                    tg_user_id,
+                    video=video,
+                    caption=text or None,
+                    parse_mode=None,
+                )
+                return True
+            await self.bot.send_message(tg_user_id, text, parse_mode=None)
+            return True
+        except (TelegramBadRequest, TelegramForbiddenError):
+            return False
 
     async def _action_ban(self, form: Any) -> str:
         tg_user_id = parse_int(str(form.get("tg_user_id") or ""))
@@ -657,15 +736,17 @@ class AdminWebPanel:
             section_content = (
                 "<div class='grid'>"
                 "<div class='card'><h2>Рассылка всем</h2>"
-                f"<form method='post' action='{escape(self.path)}/action/broadcast_all'>"
+                f"<form method='post' enctype='multipart/form-data' action='{escape(self.path)}/action/broadcast_all'>"
                 f"{hidden}"
-                "<textarea name='text' placeholder='Текст рассылки' required></textarea>"
+                "<textarea name='text' placeholder='Текст/подпись (необязательно, если есть медиа)'></textarea>"
+                "<input type='file' name='media' accept='image/*,video/*' />"
                 "<button type='submit'>Отправить всем</button></form></div>"
                 "<div class='card'><h2>Рассылка пользователю</h2>"
-                f"<form method='post' action='{escape(self.path)}/action/broadcast_user'>"
+                f"<form method='post' enctype='multipart/form-data' action='{escape(self.path)}/action/broadcast_user'>"
                 f"{hidden}"
                 "<input name='tg_user_id' placeholder='tg_user_id' required />"
-                "<textarea name='text' placeholder='Текст сообщения' required></textarea>"
+                "<textarea name='text' placeholder='Текст/подпись (необязательно, если есть медиа)'></textarea>"
+                "<input type='file' name='media' accept='image/*,video/*' />"
                 "<button type='submit' class='alt'>Отправить пользователю</button></form></div>"
                 "</div>"
             )

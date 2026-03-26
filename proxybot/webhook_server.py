@@ -38,7 +38,7 @@ class WebhookServer:
         self.admin_panel_path = admin_panel_path.strip() or "/admin"
         self.proxy_public_host = proxy_public_host.strip() or "127.0.0.1"
 
-        self._app = web.Application()
+        self._app = web.Application(client_max_size=64 * 1024**2)
         self._app.add_routes(
             [
                 web.post("/webhook/", self._handle_yookassa_webhook),

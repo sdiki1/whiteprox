@@ -625,6 +625,104 @@ class Database:
             "total_debited_rub": int(row["total_debited_rub"]),
         }
 
+    async def get_admin_finance_summary(self) -> dict[str, int]:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                COALESCE((SELECT COUNT(*) FROM payments), 0) AS purchases_total,
+                COALESCE((SELECT COUNT(*) FROM payments WHERE status = 'pending'), 0) AS purchases_pending,
+                COALESCE((SELECT COUNT(*) FROM payments WHERE status = 'paid'), 0) AS purchases_paid,
+                COALESCE((SELECT COUNT(*) FROM payments WHERE status = 'cancelled'), 0) AS purchases_cancelled,
+                COALESCE((SELECT SUM(amount_rub) FROM payments WHERE status = 'paid'), 0) AS revenue_gross_rub,
+                COALESCE((SELECT SUM(amount_rub) FROM referral_transactions WHERE direction = 'credit'), 0) AS referral_credit_rub,
+                COALESCE((SELECT SUM(amount_rub) FROM referral_transactions WHERE direction = 'debit'), 0) AS referral_debit_rub
+            """
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row is None:
+            return {
+                "purchases_total": 0,
+                "purchases_pending": 0,
+                "purchases_paid": 0,
+                "purchases_cancelled": 0,
+                "revenue_gross_rub": 0,
+                "referral_credit_rub": 0,
+                "referral_debit_rub": 0,
+                "profit_after_referral_credit_rub": 0,
+                "profit_after_referral_debit_rub": 0,
+            }
+
+        revenue_gross_rub = int(row["revenue_gross_rub"] or 0)
+        referral_credit_rub = int(row["referral_credit_rub"] or 0)
+        referral_debit_rub = int(row["referral_debit_rub"] or 0)
+        return {
+            "purchases_total": int(row["purchases_total"] or 0),
+            "purchases_pending": int(row["purchases_pending"] or 0),
+            "purchases_paid": int(row["purchases_paid"] or 0),
+            "purchases_cancelled": int(row["purchases_cancelled"] or 0),
+            "revenue_gross_rub": revenue_gross_rub,
+            "referral_credit_rub": referral_credit_rub,
+            "referral_debit_rub": referral_debit_rub,
+            "profit_after_referral_credit_rub": revenue_gross_rub - referral_credit_rub,
+            "profit_after_referral_debit_rub": revenue_gross_rub - referral_debit_rub,
+        }
+
+    async def list_admin_payments(self, limit: int = 100) -> list[dict[str, Any]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                p.id,
+                p.user_id,
+                u.tg_user_id,
+                u.username,
+                p.plan_code,
+                p.months_count,
+                p.amount_rub,
+                p.status,
+                p.target_tg_user_id,
+                p.yookassa_payment_id,
+                p.created_at,
+                p.paid_at
+            FROM payments p
+            JOIN users u ON u.id = p.user_id
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT ?
+            """,
+            (max(1, limit),),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [dict(row) for row in rows]
+
+    async def list_admin_referral_transactions(self, limit: int = 100) -> list[dict[str, Any]]:
+        cursor = await self.conn.execute(
+            """
+            SELECT
+                rt.id,
+                rt.referrer_user_id,
+                ru.tg_user_id AS referrer_tg_user_id,
+                ru.username AS referrer_username,
+                rt.referred_user_id,
+                su.tg_user_id AS referred_tg_user_id,
+                su.username AS referred_username,
+                rt.payment_id,
+                rt.amount_rub,
+                rt.direction,
+                rt.comment,
+                rt.created_at
+            FROM referral_transactions rt
+            JOIN users ru ON ru.id = rt.referrer_user_id
+            LEFT JOIN users su ON su.id = rt.referred_user_id
+            ORDER BY rt.created_at DESC, rt.id DESC
+            LIMIT ?
+            """,
+            (max(1, limit),),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [dict(row) for row in rows]
+
     async def debit_referral_balance_by_tg_user_id(
         self,
         *,

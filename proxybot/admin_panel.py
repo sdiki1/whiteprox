@@ -621,6 +621,80 @@ class AdminWebPanel:
             + "</tbody></table>"
         )
 
+    def _payments_table_html(self, payments: list[dict[str, Any]]) -> str:
+        rows: list[str] = []
+        for row in payments:
+            buyer_tg = int(row.get("tg_user_id") or 0)
+            buyer_username = str(row.get("username") or "").strip()
+            buyer_label = f"{buyer_tg} (@{buyer_username})" if buyer_username else str(buyer_tg)
+            target_tg = int(row.get("target_tg_user_id") or buyer_tg)
+            yk_payment_id = str(row.get("yookassa_payment_id") or "").strip()
+            yk_short = yk_payment_id[:16] + "..." if len(yk_payment_id) > 19 else yk_payment_id
+            status = str(row.get("status") or "")
+            paid_at = int(row.get("paid_at") or 0)
+            rows.append(
+                "<tr>"
+                f"<td>{int(row['id'])}</td>"
+                f"<td>{escape(buyer_label)}</td>"
+                f"<td>{target_tg}</td>"
+                f"<td>{escape(str(row.get('plan_code') or '-'))}</td>"
+                f"<td>{int(row.get('months_count') or 1)}</td>"
+                f"<td>{int(row.get('amount_rub') or 0)}₽</td>"
+                f"<td>{escape(status)}</td>"
+                f"<td>{escape(format_ts(int(row.get('created_at') or 0)))}</td>"
+                f"<td>{escape(format_ts(paid_at)) if paid_at > 0 else '-'}</td>"
+                f"<td>{escape(yk_short) if yk_short else '-'}</td>"
+                "</tr>"
+            )
+        return (
+            "<table><thead><tr>"
+            "<th>ID</th><th>Покупатель</th><th>Получатель</th><th>Тариф</th><th>Мес.</th>"
+            "<th>Сумма</th><th>Статус</th><th>Создан</th><th>Оплачен</th><th>ЮKassa ID</th>"
+            "</tr></thead><tbody>"
+            + ("".join(rows) if rows else "<tr><td colspan='10'>Платежей пока нет.</td></tr>")
+            + "</tbody></table>"
+        )
+
+    def _referral_transactions_table_html(self, transactions: list[dict[str, Any]]) -> str:
+        rows: list[str] = []
+        for row in transactions:
+            ref_tg = int(row.get("referrer_tg_user_id") or 0)
+            ref_username = str(row.get("referrer_username") or "").strip()
+            ref_label = f"{ref_tg} (@{ref_username})" if ref_username else str(ref_tg)
+
+            referred_tg_raw = row.get("referred_tg_user_id")
+            if referred_tg_raw is None:
+                referred_label = "-"
+            else:
+                referred_tg = int(referred_tg_raw)
+                referred_username = str(row.get("referred_username") or "").strip()
+                referred_label = f"{referred_tg} (@{referred_username})" if referred_username else str(referred_tg)
+
+            direction = str(row.get("direction") or "")
+            direction_label = "Начисление" if direction == "credit" else "Списание"
+            payment_id_raw = row.get("payment_id")
+            payment_id = str(int(payment_id_raw)) if payment_id_raw is not None else "-"
+            comment = str(row.get("comment") or "").strip() or "-"
+            rows.append(
+                "<tr>"
+                f"<td>{int(row['id'])}</td>"
+                f"<td>{escape(direction_label)}</td>"
+                f"<td>{int(row.get('amount_rub') or 0)}₽</td>"
+                f"<td>{escape(ref_label)}</td>"
+                f"<td>{escape(referred_label)}</td>"
+                f"<td>{escape(payment_id)}</td>"
+                f"<td>{escape(format_ts(int(row.get('created_at') or 0)))}</td>"
+                f"<td>{escape(comment)}</td>"
+                "</tr>"
+            )
+        return (
+            "<table><thead><tr>"
+            "<th>ID</th><th>Тип</th><th>Сумма</th><th>Реферер</th><th>Реферал</th><th>Payment ID</th><th>Дата</th><th>Комментарий</th>"
+            "</tr></thead><tbody>"
+            + ("".join(rows) if rows else "<tr><td colspan='8'>Реферальных транзакций пока нет.</td></tr>")
+            + "</tbody></table>"
+        )
+
     def _inspect_links_html(
         self,
         *,
@@ -671,6 +745,7 @@ class AdminWebPanel:
         inspect_tg: int | None,
     ) -> str:
         referral = await self.db.get_referral_admin_summary()
+        finance = await self.db.get_admin_finance_summary()
         free_pool = await self.db.count_free_pool()
         users = await self.db.list_users_with_stats(limit=500, offset=0)
 
@@ -703,6 +778,12 @@ class AdminWebPanel:
                 f"<p class='stat'>Активных прокси: <b>{total_active_proxies}</b></p>"
                 f"<p class='stat'>Заблокированных: <b>{total_banned}</b></p>"
                 f"<p class='stat'>Свободных в пуле: <b>{int(free_pool)}</b></p></div>"
+                "<div class='card'><h2>Финансы</h2>"
+                f"<p class='stat'>Покупок всего: <b>{int(finance.get('purchases_total', 0))}</b></p>"
+                f"<p class='stat'>Оплачено: <b>{int(finance.get('purchases_paid', 0))}</b></p>"
+                f"<p class='stat'>Выручка: <b>{int(finance.get('revenue_gross_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Чистая (минус начисления): <b>{int(finance.get('profit_after_referral_credit_rub', 0))}₽</b></p>"
+                "</div>"
                 "<div class='card'><h2>Рефералы</h2>"
                 f"<p class='stat'>Пользователей с реферером: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"
                 f"<p class='stat'>Начислено всего: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
@@ -771,12 +852,24 @@ class AdminWebPanel:
             )
 
         elif section == "payments":
+            payments = await self.db.list_admin_payments(limit=200)
+            referral_transactions = await self.db.list_admin_referral_transactions(limit=200)
             section_content = (
+                "<div class='stack'>"
                 "<div class='grid'>"
-                "<div class='card'><h2>Реферальные финансы</h2>"
-                f"<p class='stat'>Начислено: <b>{int(referral.get('total_earned_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Списано: <b>{int(referral.get('total_debited_rub', 0))}₽</b></p>"
-                f"<p class='stat'>Текущий баланс: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                "<div class='card'><h2>Покупки и оплаты</h2>"
+                f"<p class='stat'>Покупок создано: <b>{int(finance.get('purchases_total', 0))}</b></p>"
+                f"<p class='stat'>Оплачено: <b>{int(finance.get('purchases_paid', 0))}</b></p>"
+                f"<p class='stat'>В ожидании: <b>{int(finance.get('purchases_pending', 0))}</b></p>"
+                f"<p class='stat'>Отменено: <b>{int(finance.get('purchases_cancelled', 0))}</b></p>"
+                f"<p class='stat'>Валовая выручка: <b>{int(finance.get('revenue_gross_rub', 0))}₽</b></p>"
+                "</div>"
+                "<div class='card'><h2>Начисления и прибыль</h2>"
+                f"<p class='stat'>Реф. начислено (credit): <b>{int(finance.get('referral_credit_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Реф. списано (debit): <b>{int(finance.get('referral_debit_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Текущий реф. баланс: <b>{int(referral.get('total_balance_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Чистая прибыль (минус начисления): <b>{int(finance.get('profit_after_referral_credit_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Фактическая (минус списания): <b>{int(finance.get('profit_after_referral_debit_rub', 0))}₽</b></p>"
                 "</div>"
                 "<div class='card'><h2>Списание рефералки</h2>"
                 f"<form method='post' action='{escape(self.path)}/action/referral_debit'>"
@@ -785,6 +878,13 @@ class AdminWebPanel:
                 "<input name='amount_rub' placeholder='сумма ₽' required />"
                 "<input name='comment' placeholder='комментарий (необязательно)' />"
                 "<button class='warn' type='submit'>Списать</button></form></div>"
+                "</div>"
+                "<div class='card'><h2>Последние покупки/оплаты</h2>"
+                f"{self._payments_table_html(payments)}"
+                "</div>"
+                "<div class='card'><h2>Последние начисления/списания</h2>"
+                f"{self._referral_transactions_table_html(referral_transactions)}"
+                "</div>"
                 "</div>"
             )
 
@@ -796,6 +896,10 @@ class AdminWebPanel:
                 f"<p class='stat'>Всего активных прокси: <b>{total_active_proxies}</b></p>"
                 f"<p class='stat'>Заблокированных: <b>{total_banned}</b></p>"
                 f"<p class='stat'>Свободных прокси в пуле: <b>{int(free_pool)}</b></p>"
+                f"<p class='stat'>Покупок создано: <b>{int(finance.get('purchases_total', 0))}</b></p>"
+                f"<p class='stat'>Оплачено: <b>{int(finance.get('purchases_paid', 0))}</b></p>"
+                f"<p class='stat'>Выручка: <b>{int(finance.get('revenue_gross_rub', 0))}₽</b></p>"
+                f"<p class='stat'>Чистая прибыль: <b>{int(finance.get('profit_after_referral_credit_rub', 0))}₽</b></p>"
                 "</div>"
                 "<div class='card'><h2>Реферальные метрики</h2>"
                 f"<p class='stat'>Пользователей с реферером: <b>{int(referral.get('users_with_referrer', 0))}</b></p>"

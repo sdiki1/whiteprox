@@ -261,7 +261,7 @@ def payment_keyboard(
         rows.append(
             [
                 _button(
-                    text="Оплатить через ЮKassa",
+                    text="СБП 🇷🇺",
                     url=confirmation_url,
                     style="primary",
                     icon_custom_emoji_id=EMOJI_CARD,
@@ -281,7 +281,7 @@ def payment_keyboard(
     rows.append(
         [
             _button(
-                text="СБП 🇷🇺" if confirmation_url else "СБП 🇷🇺",
+                text="Проверить оплату",
                 callback_data=f"pay:{payment_id}",
                 style="success",
                 icon_custom_emoji_id=EMOJI_DONE,

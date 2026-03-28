@@ -19,6 +19,7 @@ class Settings:
     yookassa_secret_key: str
     yookassa_return_url: str
     yookassa_receipt_email: str
+    polling_payment: bool
     webhook_host: str
     webhook_port: int
     telegram_webhook_url: str
@@ -47,6 +48,13 @@ def _int_tuple_env(name: str) -> tuple[int, ...]:
     return tuple(result)
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on", "y", "да"}
+
+
 def load_settings() -> Settings:
     load_dotenv()
 
@@ -66,6 +74,7 @@ def load_settings() -> Settings:
         yookassa_secret_key=os.getenv("YOOKASSA_SECRET_KEY", "").strip(),
         yookassa_return_url=os.getenv("YOOKASSA_RETURN_URL", "https://t.me").strip() or "https://t.me",
         yookassa_receipt_email=os.getenv("YOOKASSA_RECEIPT_EMAIL", "").strip(),
+        polling_payment=_bool_env("POLLING_PAYMENT", False),
         webhook_host=os.getenv("WEBHOOK_HOST", "0.0.0.0").strip() or "0.0.0.0",
         webhook_port=_int_env("WEBHOOK_PORT", 8080),
         telegram_webhook_url=os.getenv("TELEGRAM_WEBHOOK_URL", "").strip(),

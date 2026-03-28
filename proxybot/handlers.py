@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape
@@ -62,6 +63,8 @@ STARS_PER_RUB = 1.3
 SUPPORTED_MONTH_OPTIONS = (1, 3, 6, 12)
 REFERRAL_REWARD_PERCENT = 50
 HELP_ADMIN_USERNAME = "content_aii"
+PAYMENT_POLL_INTERVAL_SEC = 10
+PAYMENT_POLL_DURATION_SEC = 15 * 60
 
 
 class AdminStates(StatesGroup):
@@ -732,10 +735,12 @@ def create_router(
     proxy_public_host: str,
     admin_tg_ids: tuple[int, ...] = (),
     yookassa_client: YooKassaClient | None = None,
+    polling_payment: bool = False,
 ) -> Router:
     router = Router()
     admin_ids = set(admin_tg_ids)
     yk = yookassa_client or YooKassaClient(shop_id="", secret_key="", return_url="https://t.me")
+    payment_polling_tasks: dict[int, asyncio.Task[None]] = {}
 
     async def build_admin_panel_text_with_referrals() -> str:
         referral_summary = await db.get_referral_admin_summary()
@@ -842,6 +847,93 @@ def create_router(
             yookassa_confirmation_url=yookassa_confirmation_url,
         )
         return payment_id, yookassa_confirmation_url
+
+    async def poll_payment_status(
+        *,
+        bot,
+        payment_id: int,
+        buyer_user_id: int,
+        buyer_tg_user_id: int,
+    ) -> None:
+        attempts = PAYMENT_POLL_DURATION_SEC // PAYMENT_POLL_INTERVAL_SEC
+        try:
+            for _ in range(attempts):
+                payment = await db.get_payment_for_user(payment_id=payment_id, user_id=buyer_user_id)
+                if payment is None:
+                    return
+                if str(payment.get("status") or "") != "pending":
+                    return
+
+                yookassa_payment_id = str(payment.get("yookassa_payment_id") or "").strip()
+                if not yookassa_payment_id:
+                    return
+
+                try:
+                    remote_status = await yk.get_payment_status(yookassa_payment_id)
+                except YooKassaError as exc:
+                    logger.warning(
+                        "Could not poll YooKassa payment %s (local payment_id=%s): %s",
+                        yookassa_payment_id,
+                        payment_id,
+                        exc,
+                    )
+                    await asyncio.sleep(PAYMENT_POLL_INTERVAL_SEC)
+                    continue
+
+                if remote_status == "succeeded":
+                    confirmation_url = str(payment.get("yookassa_confirmation_url") or "").strip() or None
+                    target_tg_user_id = int(payment.get("target_tg_user_id") or buyer_tg_user_id)
+                    target_label = payment_target_label(
+                        buyer_tg_user_id=buyer_tg_user_id,
+                        target_tg_user_id=target_tg_user_id,
+                    )
+                    await bot.send_message(
+                        buyer_tg_user_id,
+                        (
+                            "🎉 Платеж подтвержден в ЮKassa.\n"
+                            f"ID платежа: <code>{payment_id}</code>\n"
+                            f"Покупка: <b>{target_label}</b>\n\n"
+                            "Нажмите «СБП 🇷🇺», чтобы активировать выдачу прокси."
+                        ),
+                        parse_mode="HTML",
+                        reply_markup=payment_keyboard(payment_id, confirmation_url=confirmation_url),
+                    )
+                    return
+
+                await asyncio.sleep(PAYMENT_POLL_INTERVAL_SEC)
+        except asyncio.CancelledError:
+            raise
+        except (TelegramBadRequest, TelegramForbiddenError) as exc:
+            logger.warning("Could not notify payer %s about payment %s: %s", buyer_tg_user_id, payment_id, exc)
+        except Exception:
+            logger.exception("Unexpected payment polling failure: payment_id=%s", payment_id)
+
+    def start_payment_polling(
+        *,
+        bot,
+        payment_id: int,
+        buyer_user_id: int,
+        buyer_tg_user_id: int,
+        confirmation_url: str | None,
+    ) -> None:
+        if not polling_payment:
+            return
+        if not yk.enabled or not confirmation_url:
+            return
+        existing = payment_polling_tasks.get(payment_id)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(
+            poll_payment_status(
+                bot=bot,
+                payment_id=payment_id,
+                buyer_user_id=buyer_user_id,
+                buyer_tg_user_id=buyer_tg_user_id,
+            ),
+            name=f"payment-poll-{payment_id}",
+        )
+        payment_polling_tasks[payment_id] = task
+        task.add_done_callback(lambda _: payment_polling_tasks.pop(payment_id, None))
 
     @router.message(CommandStart())
     async def cmd_start(message: Message, state: FSMContext) -> None:
@@ -2036,6 +2128,13 @@ def create_router(
             ),
             parse_mode="HTML",
         )
+        start_payment_polling(
+            bot=callback.bot,
+            payment_id=payment_id,
+            buyer_user_id=buyer_user_id,
+            buyer_tg_user_id=callback.from_user.id,
+            confirmation_url=confirmation_url,
+        )
         await callback.answer()
 
     @router.message(PurchaseStates.waiting_friend_tg_id)
@@ -2168,6 +2267,13 @@ def create_router(
                 confirmation_url=confirmation_url,
             ),
             parse_mode="HTML",
+        )
+        start_payment_polling(
+            bot=message.bot,
+            payment_id=payment_id,
+            buyer_user_id=buyer_user_id,
+            buyer_tg_user_id=message.from_user.id,
+            confirmation_url=confirmation_url,
         )
 
     @router.callback_query(F.data.startswith("paystars:"))

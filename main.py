@@ -66,6 +66,7 @@ async def run() -> None:
             db=db,
             proxy_public_host=settings.proxy_public_host,
             admin_tg_ids=settings.admin_tg_ids,
+            polling_payment=settings.polling_payment,
             yookassa_client=YooKassaClient(
                 shop_id=settings.yookassa_shop_id,
                 secret_key=settings.yookassa_secret_key,

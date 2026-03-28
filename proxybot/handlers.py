@@ -249,7 +249,7 @@ def build_referral_text(
     return (
         f"{tg_emoji(EMOJI_GEM, '💎')} <b>Реферальная программа</b>\n\n"
         f"Возврат: <b>{REFERRAL_REWARD_PERCENT}%</b> от оплаты приглашенного пользователя.\n\n"
-        f"Ваша ссылка:\n<code>{referral_link}</code>\n\n"
+        f"Ваша ссылка:\n<code>{referral_link}</code>\n<b>👆Чтобы скопировать ссылку - нажмите на неё</b>\n\n"
         f"Приглашено: <b>{summary.get('referrals_count', 0)}</b>\n"
         f"Реф. баланс: <b>{summary.get('balance_rub', 0)}₽</b>\n"
         f"Начислено всего: <b>{summary.get('earned_rub', 0)}₽</b>\n"

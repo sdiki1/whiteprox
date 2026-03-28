@@ -70,6 +70,7 @@ async def run() -> None:
                 shop_id=settings.yookassa_shop_id,
                 secret_key=settings.yookassa_secret_key,
                 return_url=settings.yookassa_return_url,
+                receipt_email=settings.yookassa_receipt_email,
             ),
         )
     )

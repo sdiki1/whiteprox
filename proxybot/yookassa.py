@@ -19,10 +19,18 @@ class YooKassaCreateResult:
 
 
 class YooKassaClient:
-    def __init__(self, *, shop_id: str, secret_key: str, return_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        shop_id: str,
+        secret_key: str,
+        return_url: str,
+        receipt_email: str = "",
+    ) -> None:
         self.shop_id = shop_id.strip()
         self.secret_key = secret_key.strip()
         self.return_url = return_url.strip() or "https://t.me"
+        self.receipt_email = receipt_email.strip()
 
     @property
     def enabled(self) -> bool:
@@ -47,6 +55,21 @@ class YooKassaClient:
             "confirmation": {"type": "redirect", "return_url": self.return_url},
             "description": description,
         }
+        if self.receipt_email:
+            # Для фискализации через ЮKassa передаем чек с e-mail покупателя.
+            payload["receipt"] = {
+                "customer": {"email": self.receipt_email},
+                "items": [
+                    {
+                        "description": description[:128] or "Оплата услуги",
+                        "quantity": "1.00",
+                        "amount": {"value": amount_value, "currency": "RUB"},
+                        "vat_code": 1,
+                        "payment_mode": "full_prepayment",
+                        "payment_subject": "service",
+                    }
+                ],
+            }
         if metadata:
             payload["metadata"] = metadata
 

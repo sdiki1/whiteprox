@@ -72,6 +72,7 @@ docker compose up -d --build
 - `YOOKASSA_SHOP_ID` — ID магазина ЮKassa
 - `YOOKASSA_SECRET_KEY` — секретный ключ ЮKassa
 - `YOOKASSA_RETURN_URL` — URL возврата после оплаты (redirect)
+- `YOOKASSA_RECEIPT_EMAIL` — email для отправки чеков ЮKassa (фискализация)
 - `WEBHOOK_HOST` — bind host HTTP-сервера вебхуков
 - `WEBHOOK_PORT` — bind port HTTP-сервера вебхуков
 - `WEBHOOK_BIND_HOST` — host bind для публикации webhook-порта в `docker-compose`
